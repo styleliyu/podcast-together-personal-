@@ -1,0 +1,56 @@
+
+/** 原理
+* 都会读到 .classic-theme
+* 当深色模式的时候 再追加读取 .dark-theme 此时 .classic-theme 仍然会读取到
+*/
+.classic-theme {
+  transition: color .45s, background-color .45s;
+  --bg-color: #ffffff;
+  --card-color: #f9f9f9;
+  --text-color: #333;
+  --note-color: #bababa;
+  --desc-color: #606060;
+  --tap-color: #4269a5;
+  --theme-a: #fadfb2;
+
+  /** 主按钮 */
+  --main-btn-bg: #181818;
+  --main-btn-text: #eee;
+  --hover-btn-bg: #393939;
+
+  /** 副按钮 */
+  --other-btn-bg: #f3f3f3;
+  --other-btn-text: #565656;
+  --other-btn-hover: #e6e6e6;
+
+  /** 一些比较少用的字段 */
+  --more-btn-bg: linear-gradient(0deg, rgba(249, 249, 249, 1) 60%, rgba(249, 249, 249, .2) 100%);
+}
+
+.dark-theme {
+  --bg-color: #181818;
+  --card-color: #282828;
+  --text-color: #eee;
+  --note-color: #787878;
+  --desc-color: #c0c0c0;
+  --tap-color: #4269a5;
+  --theme-a: #f1c680;
+
+  /** 主按钮 */
+  --main-btn-bg: #ddd;
+  --main-btn-text: #181818;
+  --hover-btn-bg: #bbb;
+
+  /** 副按钮 */
+  --other-btn-bg: #404040;
+  --other-btn-text: #c0c0c0;
+  --other-btn-hover: #606060;
+
+  /** 一些比较少用的字段 */
+  --more-btn-bg: linear-gradient(0deg, rgba(40, 40, 40, 1) 50%, rgba(40, 40, 40, .2) 100%);
+}
+
+p::selection {
+  background-color: var(--text-color);
+  color: var(--card-color);
+}

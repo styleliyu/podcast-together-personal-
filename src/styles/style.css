@@ -1,0 +1,101 @@
+
+
+:root {
+  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 400;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
+  user-select: none;
+
+  /** 一些全局的 css 变量 */
+  /** 设备断点 */
+  --max-phone: 600px;
+  --max-pad: 1100px;
+  --max-laptop: 1600px;
+
+  /** 标准页宽 竖列模式 */
+  --standard-max-px: 500px;
+
+  /** 各字号 */
+  --big-word-style: 36px;
+  --head-font: 28px;
+  --title-font: 21px;
+  --desc-font: 18px;
+  --btn-font: 17px;
+  --mini-font: 15px;
+}
+
+body {
+  padding: 0;
+  margin: 0;
+}
+
+a:link {
+  text-decoration: none;
+}
+a:visited {
+  text-decoration: none;
+}
+a:active {
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: none;
+}
+
+.page {
+  width: 100%;
+  min-height: 85vh;
+  min-height: calc(100vh - 170px);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.page > .page-container {
+  padding-top: 100px;
+  width: 92%;
+  max-width: var(--standard-max-px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+/** 底部占位 */
+.page .page-btns-virtual {
+  width: 100%;
+  height: 120px;
+}
+
+.page-btns-container {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  min-height: 120px;
+  padding-bottom: 50px;
+}
+
+.page-btns-container > .page-btns {
+  width: 92%;
+  max-width: var(--standard-max-px);
+  position: relative;
+}
+
+input {
+  background: transparent;
+}
+
+.div-bg-img {
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  background-position: center;
+}

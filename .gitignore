@@ -1,0 +1,34 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+.env
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# 第三方设置，比如微信 js-sdk
+thirdparty-setting.ts
+
+# 公众号的校验文件
+/public/MP_verify*
+
+# vite-plugin-pwa 生成的 dev-dist
+dev-dist
