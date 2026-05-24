@@ -1,11 +1,13 @@
 import axios from "axios"
 import * as cheerio from "cheerio"
+import crypto from "crypto"
 import type { ContentData, RequestContext, RequestRes } from "./types"
 
 type CheerioAPI = ReturnType<typeof cheerio.load>
 
 const MAX_FETCH_MILLI = 4000
 const WX_AUDIO_URL = "https://res.wx.qq.com/voice/getvoice?mediaid="
+const XIMALAYA_API_ORIGIN = "https://api.ximalaya.com"
 
 export async function handleParseText(ctx: RequestContext): Promise<RequestRes<ContentData>> {
   const err = checkEntry(ctx)
@@ -19,6 +21,15 @@ export async function handleParseText(ctx: RequestContext): Promise<RequestRes<C
         infoType: "podcast",
         audioUrl: link
       }
+    }
+  }
+
+  if (isXimalayaLink(link)) {
+    const ximalayaRes = await resolveXimalayaLink(link, ctx.body["x-pt-local-id"])
+    if (ximalayaRes) return { code: "0000", data: ximalayaRes }
+    return {
+      code: "E4004",
+      showMsg: "喜马拉雅链接解析失败，请确认开放平台配置和该声音是否为可输出的免费内容"
     }
   }
 
@@ -59,6 +70,185 @@ async function fetchLink(link: string): Promise<string | undefined> {
     console.error("fetch url failed", err)
     return undefined
   }
+}
+
+async function fetchLinkWithFinalUrl(link: string): Promise<{ html: string; finalUrl: string } | undefined> {
+  try {
+    const res = await axios.get<string>(link, {
+      timeout: MAX_FETCH_MILLI,
+      responseType: "text",
+      maxRedirects: 8,
+      headers: {
+        "User-Agent": "Mozilla/5.0 podcast-together"
+      }
+    })
+    const html = res.data
+    if (!html || typeof html !== "string") return undefined
+    const finalUrl = res.request?.res?.responseUrl || link
+    return { html, finalUrl }
+  } catch (err) {
+    console.error("fetch url with redirect failed", err)
+    return undefined
+  }
+}
+
+function isXimalayaLink(link: string): boolean {
+  try {
+    const host = new URL(link).hostname.toLowerCase()
+    return host === "xima.tv" || host.endsWith(".xima.tv") || host === "ximalaya.com" || host.endsWith(".ximalaya.com")
+  } catch {
+    return false
+  }
+}
+
+async function resolveXimalayaLink(link: string, clientId?: string): Promise<ContentData | undefined> {
+  const fetched = await fetchLinkWithFinalUrl(link)
+  const finalUrl = fetched?.finalUrl || link
+  const trackId = extractXimalayaTrackId(finalUrl) || extractXimalayaTrackId(link) || extractXimalayaTrackId(fetched?.html || "")
+  if (!trackId) return undefined
+
+  const [track, playInfo] = await Promise.all([
+    requestXimalayaApi<XimalayaTrack>("/tracks/get_single", { track_id: trackId }, clientId),
+    requestXimalayaApi<XimalayaPlayInfo[]>("/openapi_play_url/tracks/batch_get_play_info", { ids: trackId }, clientId)
+  ])
+
+  const audioUrl = pickXimalayaAudioUrl(playInfo?.[0])
+  if (!audioUrl) return undefined
+
+  const album = track?.subordinated_album
+  return {
+    infoType: "podcast",
+    audioUrl,
+    sourceType: "ximalaya",
+    title: track?.track_title || `喜马拉雅声音 ${trackId}`,
+    description: stripHtml(track?.track_intro || track?.track_rich_intro || ""),
+    imageUrl: track?.cover_url_large || track?.cover_url_middle || track?.cover_url_small || album?.cover_url_large || album?.cover_url_middle || album?.cover_url_small || "",
+    linkUrl: finalUrl,
+    seriesName: album?.album_title || "",
+    seriesUrl: album?.id ? `https://www.ximalaya.com/album/${album.id}` : ""
+  }
+}
+
+function extractXimalayaTrackId(text: string): string {
+  try {
+    const url = new URL(text)
+    if (url.hostname.includes("ximalaya.com")) {
+      const lastNumericSegment = url.pathname.split("/").filter(Boolean).reverse().find(segment => /^\d+$/.test(segment))
+      if (lastNumericSegment) return lastNumericSegment
+      const srcId = url.searchParams.get("srcId") || url.searchParams.get("trackId") || url.searchParams.get("track_id")
+      if (srcId && /^\d+$/.test(srcId)) return srcId
+    }
+  } catch {}
+
+  const patterns = [
+    /\/selfshare\/sound\/(\d+)/i,
+    /\/sound\/(\d+)/i,
+    /[?&](?:trackId|track_id|srcId)=([0-9]+)/i,
+    /(["']trackId["']\s*:\s*|["']track_id["']\s*:\s*|["']srcId["']\s*:\s*["']?)(\d+)/i
+  ]
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern)
+    if (!match) continue
+    return match[2] || match[1] || ""
+  }
+
+  return ""
+}
+
+interface XimalayaAlbum {
+  id?: number
+  album_title?: string
+  cover_url_small?: string
+  cover_url_middle?: string
+  cover_url_large?: string
+}
+
+interface XimalayaTrack {
+  id?: number
+  track_title?: string
+  track_intro?: string
+  track_rich_intro?: string
+  cover_url_small?: string
+  cover_url_middle?: string
+  cover_url_large?: string
+  subordinated_album?: XimalayaAlbum
+}
+
+interface XimalayaPlayInfo {
+  play_url_64?: string
+  play_url_64_m4a?: string
+  play_url_24_m4a?: string
+  play_url_32?: string
+}
+
+async function requestXimalayaApi<T>(
+  path: string,
+  businessParams: Record<string, string>,
+  clientId?: string
+): Promise<T | undefined> {
+  const appKey = process.env.XIMALAYA_APP_KEY
+  const appSecret = process.env.XIMALAYA_APP_SECRET
+  if (!appKey || !appSecret) {
+    console.warn("XIMALAYA_APP_KEY or XIMALAYA_APP_SECRET is not configured")
+    return undefined
+  }
+
+  const params: Record<string, string> = {
+    ...businessParams,
+    app_key: appKey,
+    client_os_type: process.env.XIMALAYA_CLIENT_OS_TYPE || "4",
+    nonce: crypto.randomBytes(16).toString("hex"),
+    timestamp: String(Date.now()),
+    server_api_version: process.env.XIMALAYA_SERVER_API_VERSION || "1.0.0",
+    device_id: process.env.XIMALAYA_DEVICE_ID || clientId || "podcast-together",
+  }
+
+  if (process.env.XIMALAYA_DEVICE_ID_TYPE) {
+    params.device_id_type = process.env.XIMALAYA_DEVICE_ID_TYPE
+  }
+
+  params.sig = createXimalayaSig(params, appSecret)
+
+  try {
+    const res = await axios.get<T>(`${XIMALAYA_API_ORIGIN}${path}`, {
+      timeout: MAX_FETCH_MILLI,
+      params,
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+        "X-Use-V2-Error-Code": "true"
+      }
+    })
+    return res.data
+  } catch (err) {
+    console.error(`ximalaya api failed: ${path}`, err)
+    return undefined
+  }
+}
+
+function createXimalayaSig(params: Record<string, string>, appSecret: string): string {
+  const plain = Object.keys(params)
+    .filter(key => key !== "sig")
+    .sort()
+    .map(key => `${key}=${params[key]}`)
+    .join("&")
+
+  if (process.env.XIMALAYA_SIG_MODE === "hmac_sha1_md5") {
+    const hmac = crypto.createHmac("sha1", appSecret).update(plain, "utf8").digest()
+    return crypto.createHash("md5").update(hmac).digest("hex")
+  }
+
+  return crypto.createHash("md5").update(`${appSecret}${plain}${appSecret}`, "utf8").digest("hex")
+}
+
+function pickXimalayaAudioUrl(playInfo?: XimalayaPlayInfo): string {
+  if (!playInfo) return ""
+  return playInfo.play_url_64_m4a || playInfo.play_url_64 || playInfo.play_url_24_m4a || playInfo.play_url_32 || ""
+}
+
+function stripHtml(input: string): string {
+  if (!input) return ""
+  return cheerio.load(input).text().replace(/\s+/g, " ").trim()
 }
 
 function parseHtml(html: string, originLink: string): RequestRes<ContentData> {

@@ -40,7 +40,25 @@ PORT=3001
 DATABASE_PATH=./data/podcast-together.db
 CORS_ORIGIN=https://你的域名
 ROOM_CLOCK_INTERVAL_MS=30000
+XIMALAYA_APP_KEY=
+XIMALAYA_APP_SECRET=
+XIMALAYA_CLIENT_OS_TYPE=4
+XIMALAYA_SERVER_API_VERSION=1.0.0
+XIMALAYA_DEVICE_ID=
+XIMALAYA_DEVICE_ID_TYPE=
+XIMALAYA_SIG_MODE=md5_secret_concat
 ```
+
+如果要支持喜马拉雅链接，需要在喜马拉雅开放平台申请应用，并确保应用具备“批量获取声音播放地址信息”接口权限。`XIMALAYA_APP_KEY` 和 `XIMALAYA_APP_SECRET` 必须只放在服务端 `.env`，不要写入前端环境变量或提交到 Git。
+
+喜马拉雅分享短链会先解析出声音 ID，再调用：
+
+- `/tracks/get_single` 获取声音标题、封面、专辑信息
+- `/openapi_play_url/tracks/batch_get_play_info` 获取免费声音播放地址
+
+该接口只能获取可输出的免费内容播放地址，付费或无权限内容会解析失败。
+
+如果开放平台调试工具提示签名错误，可把 `XIMALAYA_SIG_MODE` 改成 `hmac_sha1_md5` 后重启后端再试。
 
 ## 5. 构建并启动后端
 
@@ -120,9 +138,10 @@ curl -X POST https://你的域名/api/pt-service \
 
 1. 打开 `https://你的域名`。
 2. 用 `.mp3` 或 `.m4a` 直链创建房间。
-3. 用两个浏览器进入同一个房间。
-4. 在一个浏览器播放、暂停、拖动进度，确认另一个浏览器同步。
-5. 关闭其中一个浏览器，约 50-60 秒后确认成员被清理。
+3. 用喜马拉雅分享链接创建房间，例如 `https://xima.tv/...`，确认能解析出标题、封面和音频。
+4. 用两个浏览器进入同一个房间。
+5. 在一个浏览器播放、暂停、拖动进度，确认另一个浏览器同步。
+6. 关闭其中一个浏览器，约 50-60 秒后确认成员被清理。
 
 ## 9. 安全事项
 
