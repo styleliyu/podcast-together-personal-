@@ -1,5 +1,5 @@
 import rq from "../../../request"
-import { RequestRes, RoRes } from "../../../type"
+import { ContentData, RequestRes, RoRes } from "../../../type"
 import api from "../../../request/api"
 
 const url = api.ROOM_OPERATE
@@ -22,5 +22,10 @@ export const request_heartbeat = async(roomId: string, nickName: string): Promis
 export const request_leave = async(roomId: string, nickName: string): Promise<RequestRes<RoRes>> => {
   let param = { operateType: "LEAVE", roomId, nickName }
   let res = await rq.request<RoRes>(url, param)
+  return res
+}
+
+export const request_parse = async(link: string): Promise<RequestRes<ContentData>> => {
+  let res = await rq.request<ContentData>(api.PARSE_TEXT, { link })
   return res
 }

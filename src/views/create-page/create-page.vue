@@ -85,7 +85,7 @@ onActivated(() => {
         maxlength="1000"
         ref="inputEl"
       />
-      <p>支持播客、mp3/m4a、网易云、QQ、酷狗、酷我、百度音乐单曲和歌单链接</p>
+      <p>支持播客、mp3/m4a/aac、网易云、QQ、酷狗、酷我、百度音乐单曲和歌单链接</p>
       <label class="persistent-row">
         <input v-model="isPersistent" type="checkbox" />
         <span>常驻房间</span>
@@ -98,19 +98,15 @@ onActivated(() => {
         multiple
         @change="onFileChange"
       />
-    </div>
-    <div class="page-btns-virtual"></div>
-  </div>
-  <div class="page-btns-container">
-    <div class="page-btns">
-      <pt-button 
-        class="join-main-btn" 
-        text="确定" 
-        @click="onTapConfirm"
-        :disabled="!canSubmit"
-      />
-      <pt-button :text="hasPrev ? '返回' : '回首页'" type="other" @click="onTapBack"></pt-button>
-      <pt-button text="导入本地歌曲" type="other" @click="onTapUpload"></pt-button>
+      <div class="create-actions">
+        <pt-button
+          text="确定"
+          @click="onTapConfirm"
+          :disabled="!canSubmit"
+        />
+        <pt-button :text="hasPrev ? '返回' : '回首页'" type="other" @click="onTapBack"></pt-button>
+        <pt-button text="导入本地歌曲" type="other" @click="onTapUpload"></pt-button>
+      </div>
     </div>
   </div>
 
@@ -125,18 +121,18 @@ onActivated(() => {
 
 <style scoped lang="scss">
 
-.page-btns-virtual {
-  height: 50px;
-}
-
 .page-container {
+  min-height: calc(100vh - 120px);
+  justify-content: center;
+  padding-top: 40px;
+  padding-bottom: 60px;
 
   h1 {
     margin-block-start: 0;
     font-size: 34px;
     line-height: 44px;
     color: var(--text-color);
-    margin-bottom: 56px;
+    margin-bottom: 42px;
   }
 
   input {
@@ -190,8 +186,12 @@ onActivated(() => {
 
 }
 
-.join-main-btn {
-  margin-bottom: 20px;
+.create-actions {
+  width: min(100%, 520px);
+  margin-top: 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
 .page-full {

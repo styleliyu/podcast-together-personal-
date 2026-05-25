@@ -5,7 +5,7 @@
  */
 import { ref, reactive, onActivated, onDeactivated, nextTick } from "vue"
 import { PageData, PageState, WsMsgRes, RoomStatus, PlayStatus, RevokeType } from "../../../type/type-room-page"
-import { ContentData, PlayMode, RequestRes, RoRes } from "../../../type"
+import { ContentData, PlayMode, QueueItem, RequestRes, RoRes } from "../../../type"
 import { RouteLocationNormalizedLoaded } from "vue-router"
 import { useRouteAndPtRouter, PtRouter, goHome } from "../../../routes/pt-router"
 import ptUtil from "../../../utils/pt-util"
@@ -19,7 +19,7 @@ import ptApi from "../../../utils/pt-api"
 import { initPlayer } from "./init-player"
 import { initWebSocket, sendToWebSocket } from "./init-websocket"
 import { shareData } from "./init-share"
-import { request_enter, request_heartbeat, request_leave } from "./room-request"
+import { request_enter, request_heartbeat, request_leave, request_parse } from "./room-request"
 
 // 一些常量
 const COLLECT_TIMEOUT = 300    // 收集最新状态的最小间隔
@@ -157,6 +157,50 @@ const onPlayModeChange = () => {
   })
 }
 
+const onAppendQueueByLink = async () => {
+  if(!canOperatePlayer()) {
+    showOperateFailed()
+    return
+  }
+  const editorRes = await cui.showTextEditor({
+    title: "添加歌曲或歌单",
+    placeholder: "粘贴单曲或歌单链接",
+    minLength: 10,
+    maxLength: 1000
+  })
+  if(!editorRes.confirm || !editorRes.value) return
+
+  cui.showLoading({ title: "正在添加.." })
+  const res = await request_parse(editorRes.value)
+  cui.hideLoading()
+  if(!res || res.code !== "0000" || !res.data?.audioUrl) {
+    cui.showModal({
+      title: "添加失败",
+      content: res?.showMsg || "链接解析失败，请更换链接后再试。",
+      showCancel: false
+    })
+    return
+  }
+
+  const items = contentToQueueItems(res.data)
+  if(!items.length) {
+    cui.showModal({
+      title: "添加失败",
+      content: "没有找到可播放的歌曲。",
+      showCancel: false
+    })
+    return
+  }
+
+  sendToWebSocket(ws, {
+    operateType: "APPEND_QUEUE",
+    roomId: pageData.roomId,
+    "x-pt-local-id": localId,
+    "x-pt-stamp": time.getTime(),
+    items
+  })
+}
+
 export const useRoomPage = () => {
   const rr = useRouteAndPtRouter()
   router = rr.router
@@ -176,6 +220,7 @@ export const useRoomPage = () => {
     onQueueItemTap,
     onQueueAdvance,
     onPlayModeChange,
+    onAppendQueueByLink,
   }
 }
 
@@ -317,6 +362,8 @@ function createPlayer() {
     if(!pageData.queue) return
     sendAdvanceQueue("auto")
   }
+  const prev = () => onQueueAdvance("prev")
+  const next = () => onQueueAdvance("next")
   const callbacks = {
     durationchange,
     canplay,
@@ -325,7 +372,9 @@ function createPlayer() {
     playing,
     ratechange,
     seeked,
-    ended
+    ended,
+    prev,
+    next
   }
 
   const onBeforeClick = (target: string): boolean => {
@@ -341,6 +390,19 @@ function createPlayer() {
 
   player = initPlayer(playerEl, audio, callbacks, onBeforeClick)
   checkPlayerReady()
+}
+
+function contentToQueueItems(content: ContentData): QueueItem[] {
+  if(content.queue?.items?.length) return content.queue.items
+  return [{
+    id: `${content.sourceType || "audio"}:${content.linkUrl || content.audioUrl}`,
+    sourceType: content.sourceType || "audio",
+    title: content.title || content.seriesName || "音频",
+    artist: content.seriesName || "",
+    imageUrl: content.imageUrl || "",
+    linkUrl: content.linkUrl || "",
+    audioUrl: content.audioUrl
+  }]
 }
 
 function sendAdvanceQueue(direction: "next" | "prev" | "auto") {

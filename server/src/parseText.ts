@@ -43,7 +43,7 @@ export async function handleParseText(ctx: RequestContext): Promise<RequestRes<C
 }
 
 function judgeIsCdnLink(link: string): boolean {
-  const reg = /^https?:\/\/[\w.-]*\w{1,32}\.\w{2,6}\/\S+\.(mp3|m4a)(\?\S*)?$/i
+  const reg = /^https?:\/\/[\w.-]*\w{1,32}\.\w{2,6}\/\S+\.(mp3|m4a|aac)(\?\S*)?$/i
   return reg.test(link)
 }
 

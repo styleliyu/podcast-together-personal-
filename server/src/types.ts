@@ -140,7 +140,7 @@ export interface ResToFe {
 }
 
 export interface ReqBase {
-  operateType: "FIRST_SEND" | "SET_PLAYER" | "HEARTBEAT" | "SET_QUEUE_INDEX" | "ADVANCE_QUEUE" | "SET_PLAY_MODE"
+  operateType: "FIRST_SEND" | "SET_PLAYER" | "HEARTBEAT" | "SET_QUEUE_INDEX" | "ADVANCE_QUEUE" | "SET_PLAY_MODE" | "APPEND_QUEUE"
   roomId: string
   "x-pt-local-id": string
   "x-pt-stamp": number
@@ -168,6 +168,11 @@ export interface ReqAdvanceQueue extends ReqBase {
 export interface ReqSetPlayMode extends ReqBase {
   operateType: "SET_PLAY_MODE"
   playMode: PlayMode
+}
+
+export interface ReqAppendQueue extends ReqBase {
+  operateType: "APPEND_QUEUE"
+  items: QueueItem[]
 }
 
 export interface RequestContext {

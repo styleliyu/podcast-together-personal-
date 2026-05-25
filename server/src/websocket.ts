@@ -5,6 +5,8 @@ import { resolveQueueItemContent } from "./music/musicAdapter"
 import type {
   ContentData,
   PlayMode,
+  QueueItem,
+  ReqAppendQueue,
   PtWebSocket,
   ReqAdvanceQueue,
   ReqBase,
@@ -71,6 +73,7 @@ async function handleMessage(socket: PtWebSocket, data: unknown): Promise<void> 
   else if (req.operateType === "SET_QUEUE_INDEX") await handleSetQueueIndex(socket, req as ReqSetQueueIndex)
   else if (req.operateType === "ADVANCE_QUEUE") await handleAdvanceQueue(socket, req as ReqAdvanceQueue)
   else if (req.operateType === "SET_PLAY_MODE") await handleSetPlayMode(socket, req as ReqSetPlayMode)
+  else if (req.operateType === "APPEND_QUEUE") await handleAppendQueue(socket, req as ReqAppendQueue)
   else if (req.operateType === "HEARTBEAT") handleHeartbeat(socket, req)
 }
 
@@ -203,6 +206,37 @@ async function handleSetPlayMode(socket: PtWebSocket, req: ReqSetPlayMode): Prom
   })
 }
 
+async function handleAppendQueue(socket: PtWebSocket, req: ReqAppendQueue): Promise<void> {
+  const room = roomRepo.get(req.roomId)
+  if (!room || !canOperateQueue(room, req["x-pt-local-id"])) return
+  const guestId = getOperatorGuestId(req["x-pt-local-id"], room)
+  if (!guestId) return
+
+  const incoming = sanitizeQueueItems(req.items)
+  if (!incoming.length) return
+
+  const queue: RoomQueue = room.queue
+    ? { ...room.queue, items: [...room.queue.items, ...incoming] }
+    : { items: [contentToQueueItem(room.content), ...incoming], currentIndex: 0, playMode: "sequence" }
+
+  roomRepo.update(req.roomId, { queue, operator: guestId, operateStamp: req["x-pt-stamp"] })
+  broadcastToRoom(req.roomId, {
+    responseType: "NEW_STATUS",
+    roomStatus: {
+      roomId: req.roomId,
+      content: room.content,
+      playStatus: room.playStatus,
+      speedRate: room.speedRate,
+      contentStamp: room.contentStamp,
+      operateStamp: req["x-pt-stamp"],
+      operator: guestId,
+      queue,
+      currentIndex: queue.currentIndex,
+      playMode: queue.playMode
+    }
+  })
+}
+
 async function pauseQueueAtEnd(roomId: string, room: Room, req: ReqAdvanceQueue): Promise<void> {
   const guestId = getOperatorGuestId(req["x-pt-local-id"], room)
   if (!guestId) return
@@ -296,6 +330,34 @@ function getNextQueueIndex(queue: RoomQueue, direction: "next" | "prev" | "auto"
   return next
 }
 
+function sanitizeQueueItems(items: QueueItem[] | undefined): QueueItem[] {
+  if (!Array.isArray(items)) return []
+  return items
+    .filter(item => item && item.title && (item.audioUrl || item.resourceId))
+    .map((item, index) => ({
+      id: item.id || `${item.sourceType || "audio"}:${item.resourceId || item.audioUrl || Date.now()}:${index}`,
+      sourceType: item.sourceType || "audio",
+      title: item.title,
+      artist: item.artist || "",
+      imageUrl: item.imageUrl || "",
+      linkUrl: item.linkUrl || "",
+      resourceId: item.resourceId || "",
+      audioUrl: item.audioUrl || ""
+    }))
+}
+
+function contentToQueueItem(content: ContentData): QueueItem {
+  return {
+    id: `${content.sourceType || "current"}:${content.linkUrl || content.audioUrl}`,
+    sourceType: content.sourceType || "audio",
+    title: content.title || content.seriesName || "当前音频",
+    artist: content.seriesName || "",
+    imageUrl: content.imageUrl || "",
+    linkUrl: content.linkUrl || "",
+    audioUrl: content.audioUrl
+  }
+}
+
 function broadcastToRoom(roomId: string, data: ResToFe): void {
   for (const socket of sockets) {
     if (socket.roomId === roomId && socket.readyState === WebSocket.OPEN) send(socket, data)
@@ -306,10 +368,10 @@ function send(socket: PtWebSocket, data: ResToFe): void {
   socket.send(JSON.stringify(data))
 }
 
-function checkReqObject(data: ReqBase | ReqOperatePlayer | ReqSetQueueIndex | ReqAdvanceQueue | ReqSetPlayMode): boolean {
+function checkReqObject(data: ReqBase | ReqOperatePlayer | ReqSetQueueIndex | ReqAdvanceQueue | ReqSetPlayMode | ReqAppendQueue): boolean {
   if (!data) return false
   if (!data.operateType || !data.roomId || !data["x-pt-local-id"] || !data["x-pt-stamp"]) return false
-  if (!["FIRST_SEND", "SET_PLAYER", "HEARTBEAT", "SET_QUEUE_INDEX", "ADVANCE_QUEUE", "SET_PLAY_MODE"].includes(data.operateType)) return false
+  if (!["FIRST_SEND", "SET_PLAYER", "HEARTBEAT", "SET_QUEUE_INDEX", "ADVANCE_QUEUE", "SET_PLAY_MODE", "APPEND_QUEUE"].includes(data.operateType)) return false
 
   if (data.operateType === "SET_PLAYER") {
     const req = data as ReqOperatePlayer
@@ -333,6 +395,11 @@ function checkReqObject(data: ReqBase | ReqOperatePlayer | ReqSetQueueIndex | Re
   if (data.operateType === "SET_PLAY_MODE") {
     const req = data as ReqSetPlayMode
     if (!isPlayMode(req.playMode)) return false
+  }
+
+  if (data.operateType === "APPEND_QUEUE") {
+    const req = data as ReqAppendQueue
+    if (!Array.isArray(req.items) || req.items.length < 1) return false
   }
 
   return true

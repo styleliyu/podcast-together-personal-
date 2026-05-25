@@ -5,44 +5,16 @@ import images from "../../images"
 import { onActivated, ref } from "vue"
 import share from "../../utils/share"
 import { useTheme } from "../../hooks/useTheme"
-import { useAddToHomeScreen } from "./tools/useAddToHomeScreen"
+import readmeText from "../../../README.md?raw"
 
 const githubLinks = [
   { name: "我的 GitHub", url: "https://github.com/styleliyu" },
-  { name: "copws/qq-music-api", url: "https://github.com/copws/qq-music-api" },
-  { name: "listen1/listen1_desktop", url: "https://github.com/listen1/listen1_desktop" },
+  { name: "yenche123/podcast-together", url: "https://github.com/yenche123/podcast-together" },
   { name: "metowolf/Meting", url: "https://github.com/metowolf/Meting" },
-  { name: "yenche123/podcast-together", url: "https://github.com/yenche123/podcast-together" }
+  { name: "copws/qq-music-api", url: "https://github.com/copws/qq-music-api" },
+  { name: "listen1/listen1_desktop", url: "https://github.com/listen1/listen1_desktop" }
 ]
 
-const tutorialSections = [
-  {
-    title: "创建房间",
-    items: [
-      "粘贴播客、mp3/m4a/aac、网易云、QQ、酷狗、酷我、百度/千千音乐链接即可创建。",
-      "单曲会直接创建单曲房间；歌单会导入队列，房间内可切换顺序、随机、单曲循环。",
-      "本地歌曲可多选上传，上传后会生成本地队列房间。"
-    ]
-  },
-  {
-    title: "复制链接",
-    items: [
-      "打开歌曲或歌单详情页，复制浏览器地址栏里的前端页面链接。",
-      "不要复制歌手页、专辑页或无法公开访问的临时链接。",
-      "受会员、版权、下架或地区限制的歌曲，需要平台接口实际返回播放地址。"
-    ]
-  },
-  {
-    title: "房间使用",
-    items: [
-      "把房间链接发给朋友即可同步播放、暂停、进度和倍速。",
-      "房主可以限制其他成员操作播放器；开启后切歌和播放模式也只允许房主操作。",
-      "常驻房间不会因为同一用户创建新房间而被自动替换。"
-    ]
-  }
-]
-
-const { showInstallPwaBtn, onTapInstall } = useAddToHomeScreen()
 const { theme } = useTheme()
 const router = useRouter()
 const showGithubMenu = ref(false)
@@ -61,210 +33,239 @@ const toggleGithubMenu = () => {
   showTutorial.value = false
 }
 
-const toggleTutorial = () => {
-  showTutorial.value = !showTutorial.value
+const openTutorial = () => {
+  showTutorial.value = true
   showGithubMenu.value = false
+}
+
+const closeTutorial = () => {
+  showTutorial.value = false
 }
 </script>
 
 <template>
-  <div class="page">
-    <div class="page-container">
-      <div class="index-actions">
-        <button class="index-action-text" type="button" @click="toggleTutorial">教程</button>
-        <button
-          class="index-action-icon"
-          type="button"
-          aria-label="GitHub 项目"
-          title="GitHub 项目"
-          @click="toggleGithubMenu"
-        >
-          <img :src="theme === 'light' ? images.GITHUB : images.GITHUB_DM" class="index-github-icon"/>
-        </button>
+  <div class="page index-page">
+    <div class="index-actions">
+      <button class="index-action-text" type="button" @click="openTutorial">教程</button>
+      <button
+        class="index-action-icon"
+        type="button"
+        aria-label="GitHub 项目"
+        title="GitHub 项目"
+        @click="toggleGithubMenu"
+      >
+        <img :src="theme === 'light' ? images.GITHUB : images.GITHUB_DM" class="index-github-icon"/>
+      </button>
 
-        <div v-if="showGithubMenu" class="index-dropdown index-github-menu">
-          <a v-for="link in githubLinks" :key="link.url" :href="link.url" target="_blank">
-            {{ link.name }}
-          </a>
-        </div>
-
-        <div v-if="showTutorial" class="index-dropdown index-tutorial">
-          <section v-for="section in tutorialSections" :key="section.title">
-            <h2>{{ section.title }}</h2>
-            <p v-for="item in section.items" :key="item">{{ item }}</p>
-          </section>
-        </div>
+      <div v-if="showGithubMenu" class="index-dropdown index-github-menu">
+        <a v-for="link in githubLinks" :key="link.url" :href="link.url" target="_blank">
+          {{ link.name }}
+        </a>
       </div>
+    </div>
 
+    <div class="page-container index-container">
       <h1>一起听</h1>
+      <p>和朋友实时同步听音乐、播客和本地音频。</p>
+      <div class="index-btns">
+        <pt-button text="创建房间" @click="onTapCreateBtn"></pt-button>
+        <pt-button text="查看教程" type="other" @click="openTutorial"></pt-button>
+      </div>
     </div>
   </div>
 
-  <div class="page-btns-container">
-    <div class="page-btns">
-      <pt-button class="index-main-btn" text="创建房间" @click="onTapCreateBtn"></pt-button>
-
-      <div v-if="!showInstallPwaBtn" class="index-other-btn" @click="toggleTutorial">
-        <span>查看教程</span>
-      </div>
-      <div v-else class="index-other-btn" @click="onTapInstall">
-        <img :src="theme === 'light' ? images.IC_DOWNLOAD : images.IC_DOWNLOAD_DM" class="index-btn-icon"/>
-        <span>安装应用</span>
-      </div>
-    </div>
+  <div v-if="showTutorial" class="index-doc-modal">
+    <div class="index-doc-bg" @click="closeTutorial"></div>
+    <article class="index-doc-panel">
+      <header>
+        <h2>使用教程</h2>
+        <button type="button" @click="closeTutorial">关闭</button>
+      </header>
+      <pre>{{ readmeText }}</pre>
+    </article>
   </div>
 </template>
 
 <style scoped lang="scss">
-.page {
-  min-height: calc(100vh - 190px);
+.index-page {
+  min-height: 100vh;
+}
 
-  .page-container {
-    h1 {
-      font-size: 40px;
-      line-height: 54px;
-      color: var(--text-color);
-      letter-spacing: 0;
-      font-weight: 700;
-    }
+.index-container {
+  min-height: calc(100vh - 180px);
+  justify-content: center;
+  padding-top: 40px;
+  overflow: visible;
 
-    .index-actions {
-      position: absolute;
-      top: 14px;
-      right: 4px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      z-index: 2;
-    }
+  h1 {
+    margin: 0;
+    font-size: 48px;
+    line-height: 60px;
+    color: var(--text-color);
+    letter-spacing: 0;
+    font-weight: 700;
+  }
 
-    .index-action-text,
-    .index-action-icon {
-      height: 38px;
-      border: 0;
-      background: transparent;
-      color: var(--text-color);
-      cursor: pointer;
-      opacity: .82;
-      transition: opacity .15s, background-color .15s;
+  p {
+    margin: 18px 0 0;
+    max-width: 360px;
+    color: var(--desc-color);
+    font-size: 17px;
+    line-height: 28px;
+  }
+}
 
-      &:hover {
-        opacity: 1;
-      }
-    }
+.index-btns {
+  width: 100%;
+  margin-top: 52px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
 
-    .index-action-text {
-      padding: 0 8px;
-      font-size: 16px;
-    }
+.index-actions {
+  position: fixed;
+  top: 18px;
+  right: max(18px, calc((100vw - var(--standard-max-px)) / 2));
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  z-index: 100;
+}
 
-    .index-action-icon {
-      width: 38px;
-      padding: 7px;
-      border-radius: 50%;
+.index-action-text,
+.index-action-icon {
+  height: 38px;
+  border: 0;
+  background: transparent;
+  color: var(--text-color);
+  cursor: pointer;
+  opacity: .82;
+  transition: opacity .15s, background-color .15s;
 
-      &:hover {
-        background-color: var(--other-btn-hover);
-      }
-    }
+  &:hover {
+    opacity: 1;
+  }
+}
 
-    .index-github-icon {
-      width: 100%;
-      height: 100%;
-      display: block;
-    }
+.index-action-text {
+  padding: 0 8px;
+  font-size: 16px;
+}
 
-    .index-dropdown {
-      position: absolute;
-      top: 48px;
-      right: 0;
-      width: min(320px, calc(100vw - 40px));
-      border-radius: 8px;
-      padding: 14px;
-      background-color: var(--other-btn-bg);
-      color: var(--text-color);
-      box-shadow: 0 18px 42px rgba(0, 0, 0, .22);
-      text-align: left;
-    }
+.index-action-icon {
+  width: 38px;
+  padding: 7px;
+  border-radius: 50%;
 
-    .index-github-menu {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
+  &:hover {
+    background-color: var(--other-btn-hover);
+  }
+}
 
-      a {
-        padding: 10px 8px;
-        border-radius: 6px;
-        color: var(--text-color);
-        font-size: 15px;
-        line-height: 20px;
+.index-github-icon {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
 
-        &:hover {
-          background-color: var(--other-btn-hover);
-        }
-      }
-    }
+.index-dropdown {
+  position: absolute;
+  top: 48px;
+  right: 0;
+  width: min(320px, calc(100vw - 40px));
+  border-radius: 8px;
+  padding: 14px;
+  background-color: var(--other-btn-bg);
+  color: var(--text-color);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, .22);
+  text-align: left;
+}
 
-    .index-tutorial {
-      max-height: min(560px, calc(100vh - 90px));
-      overflow: auto;
+.index-github-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 
-      section + section {
-        margin-top: 14px;
-        padding-top: 14px;
-        border-top: 1px solid rgba(128, 128, 128, .22);
-      }
+  a {
+    padding: 10px 8px;
+    border-radius: 6px;
+    color: var(--text-color);
+    font-size: 15px;
+    line-height: 20px;
 
-      h2 {
-        margin: 0 0 8px;
-        font-size: 16px;
-        line-height: 22px;
-        color: var(--text-color);
-      }
-
-      p {
-        margin: 0 0 8px;
-        font-size: 14px;
-        line-height: 22px;
-        color: var(--other-btn-text);
-      }
+    &:hover {
+      background-color: var(--other-btn-hover);
     }
   }
 }
 
-.page-btns-container {
-  min-height: 170px;
-  padding-bottom: 20px;
+.index-doc-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px 16px;
+}
 
-  .page-btns {
-    .index-main-btn {
-      margin-bottom: 20px;
-    }
+.index-doc-bg {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, .72);
+}
 
-    .index-other-btn {
-      height: 50px;
-      width: 100%;
-      border-radius: 50px;
-      font-size: var(--btn-font);
-      background-color: var(--other-btn-bg);
-      color: var(--other-btn-text);
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      cursor: pointer;
-      margin-bottom: 20px;
+.index-doc-panel {
+  position: relative;
+  z-index: 1;
+  width: min(760px, 100%);
+  max-height: min(760px, calc(100vh - 56px));
+  box-sizing: border-box;
+  border-radius: 8px;
+  background: var(--bg-color);
+  color: var(--text-color);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .32);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 
-      .index-btn-icon {
-        width: 22px;
-        height: 22px;
-        margin-right: 10px;
-        opacity: .72;
-      }
-    }
+  header {
+    height: 58px;
+    padding: 0 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--card-color);
+  }
 
-    .index-other-btn:hover {
-      background-color: var(--other-btn-hover);
-    }
+  h2 {
+    margin: 0;
+    font-size: 20px;
+    line-height: 28px;
+  }
+
+  button {
+    height: 34px;
+    border: 0;
+    border-radius: 6px;
+    padding: 0 14px;
+    background: var(--other-btn-bg);
+    color: var(--other-btn-text);
+    cursor: pointer;
+  }
+
+  pre {
+    margin: 0;
+    padding: 20px;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    user-select: text;
+    color: var(--desc-color);
+    font-family: inherit;
+    font-size: 14px;
+    line-height: 24px;
   }
 }
 </style>

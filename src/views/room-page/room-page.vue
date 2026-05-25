@@ -22,6 +22,7 @@ const {
   onQueueItemTap,
   onQueueAdvance,
   onPlayModeChange,
+  onAppendQueueByLink,
 } = useRoomPage()
 const state = toRef(pageData, "state")
 const { 
@@ -101,6 +102,7 @@ const onTapShowMore = () => {
             <p>{{ (pageData.queue.currentIndex || 0) + 1 }} / {{ pageData.queue.items.length }}</p>
           </div>
           <div class="queue-actions">
+            <button @click="onAppendQueueByLink">添加歌曲/歌单</button>
             <button @click="onQueueAdvance('prev')">上一首</button>
             <button @click="onQueueAdvance('next')">下一首</button>
             <button @click="onPlayModeChange">{{ playModeText }}</button>
@@ -387,9 +389,14 @@ const onTapShowMore = () => {
     cursor: pointer;
     padding: 0 10px;
     font-size: 14px;
+    outline: none;
 
     &:hover {
       background: var(--card-color);
+    }
+
+    &:focus-visible {
+      box-shadow: inset 0 0 0 2px var(--text-color);
     }
   }
 
@@ -710,5 +717,22 @@ const onTapShowMore = () => {
 <style>
 .shk-cover {
   background-position: center;
+}
+
+.shk-bar_wrap {
+  height: 14px;
+  cursor: pointer;
+}
+
+.shk-bar {
+  top: 5px;
+}
+
+.shk-bar-handle {
+  cursor: grab;
+}
+
+.shk[data-seeking] .shk-bar-handle {
+  cursor: grabbing;
 }
 </style>

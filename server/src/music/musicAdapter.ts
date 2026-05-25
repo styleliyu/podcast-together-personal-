@@ -96,19 +96,46 @@ async function parsePlaylist(resource: MusicResource): Promise<RequestRes<Conten
       return { code: "E4004", showMsg: "歌单为空或平台暂时没有返回曲目列表。" }
     }
 
-    for (let i = 0; i < items.length; i++) {
-      const content = await resolveQueueItemContent(items[i])
-      if (!content?.audioUrl) continue
-      items[i] = { ...items[i], audioUrl: content.audioUrl }
-      const queue: RoomQueue = { items, currentIndex: i, playMode: "sequence" }
-      return { code: "0000", data: { ...content, queue } }
-    }
+    const playable = await resolvePlayableQueueItems(items)
+    if (!playable.length) return { code: "E4004", showMsg: "歌单中没有可播放的歌曲，请更换歌单或平台。" }
 
-    return { code: "E4004", showMsg: "歌单中没有可播放的歌曲，请更换歌单或平台。" }
+    const first = playable[0]
+    const content = await resolveQueueItemContent(first)
+    if (!content?.audioUrl) return { code: "E4004", showMsg: "歌单中没有可播放的歌曲，请更换歌单或平台。" }
+
+    const queue: RoomQueue = { items: playable, currentIndex: 0, playMode: "sequence" }
+    return { code: "0000", data: { ...content, queue } }
   } catch (err: any) {
     console.error("playlist parse failed", err?.code || err?.message || err)
     return { code: "E4004", showMsg: "歌单解析失败，请更换链接或稍后再试。" }
   }
+}
+
+async function resolvePlayableQueueItems(items: QueueItem[]): Promise<QueueItem[]> {
+  const playable: QueueItem[] = []
+  const concurrency = 5
+  let nextIndex = 0
+
+  async function worker(): Promise<void> {
+    while (nextIndex < items.length) {
+      const item = items[nextIndex++]
+      try {
+        const content = await resolveQueueItemContent(item)
+        if (content?.audioUrl) playable.push({
+          ...item,
+          audioUrl: content.audioUrl,
+          title: item.title || content.title || sourceNameFromString(item.sourceType),
+          artist: item.artist || content.seriesName || "",
+          imageUrl: item.imageUrl || content.imageUrl || "",
+          linkUrl: item.linkUrl || content.linkUrl || ""
+        })
+      } catch {}
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => worker()))
+  const order = new Map(items.map((item, index) => [item.id, index]))
+  return playable.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
 }
 
 async function resolvePlaylistItems(resource: MusicResource): Promise<QueueItem[]> {
