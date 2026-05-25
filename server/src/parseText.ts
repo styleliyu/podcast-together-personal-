@@ -2,6 +2,7 @@ import axios from "axios"
 import * as cheerio from "cheerio"
 import crypto from "crypto"
 import type { ContentData, RequestContext, RequestRes } from "./types"
+import { parseMusicLink } from "./music/musicAdapter"
 
 type CheerioAPI = ReturnType<typeof cheerio.load>
 
@@ -32,6 +33,9 @@ export async function handleParseText(ctx: RequestContext): Promise<RequestRes<C
       showMsg: "喜马拉雅链接解析失败，请确认开放平台配置和该声音是否为可输出的免费内容"
     }
   }
+
+  const musicRes = await parseMusicLink(link)
+  if (musicRes) return musicRes
 
   const html = await fetchLink(link)
   if (!html) return { code: "E4004" }

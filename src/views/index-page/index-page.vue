@@ -28,7 +28,7 @@ const onTapCreateBtn = (e: Event) => {
   <div class="page">
     <div class="page-container">
       <div class="div-bg-img index-icon-img"></div>
-      <h1>一起听播客</h1>
+      <h1>一起听</h1>
 
       <div class="index-github-links">
         <a
@@ -69,10 +69,6 @@ const onTapCreateBtn = (e: Event) => {
         <img :src="theme === 'light' ? images.IC_DOWNLOAD : images.IC_DOWNLOAD_DM" class="index-btn-icon"/>
         <span>安装应用</span>
       </div>
-      
-      <p class="page-btns-p">
-        本项目由开源 Serverless 平台 <a class="pbp-a" href="https://www.lafyun.com/" target="_blank">Laf</a> 全力驱动支持
-      </p>
     </div>
   </div>
 
@@ -186,17 +182,6 @@ const onTapCreateBtn = (e: Event) => {
 
     .index-other-btn:hover {
       background-color: var(--other-btn-hover);
-    }
-
-    .page-btns-p {
-      font-size: 14px;
-      color: var(--note-color);
-      text-align: center;
-      margin-block-end: 0;
-
-      .pbp-a {
-        color: var(--tap-color);
-      }
     }
   }
 }

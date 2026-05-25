@@ -3,11 +3,8 @@ import { computed, ref, onActivated, watch } from 'vue';
 import { hasPreviousRouteInApp, goHome, useRouteAndPtRouter } from "../../routes/pt-router";
 import PtButton from "../../components/pt-button.vue"
 import cp from "./cp-helper"
-import { useTheme } from '../../hooks/useTheme';
-import images from '../../images';
 import ListeningLoader from '../../components/listening-loader.vue'
 
-const { theme } = useTheme()
 const { router, route } = useRouteAndPtRouter()
 const hasPrev = hasPreviousRouteInApp()
 const inputValue = ref<string>("")
@@ -66,22 +63,16 @@ onActivated(() => {
 <template>
   <div class="page">
     <div class="page-container">
-      <h1>播客链接</h1>
+      <h1>创建房间</h1>
       <input 
         v-model="inputValue" 
-        placeholder="请黏贴单集链接" 
+        placeholder="粘贴音频或音乐链接" 
         type="url" 
         @keyup.enter="onInputConfirm" 
         maxlength="1000"
         ref="inputEl"
       />
-      <p>提示: 目前支持 xiaoyuzhoufm.com、podcasts.apple.com/cn/ 或者后缀为 .mp3 的链接</p>
-      <p class="check-detail">
-        <a href="https://yenche.zhubai.love/posts/2172097942360440832" target="_blank">
-          <div class="div-bg-img check-detail-question"></div>
-          <span>查看详情</span>
-        </a>
-      </p>
+      <p>支持播客、mp3/m4a、网易云、QQ、酷狗、酷我、百度音乐单曲链接</p>
     </div>
     <div class="page-btns-virtual"></div>
   </div>
@@ -116,20 +107,24 @@ onActivated(() => {
 
   h1 {
     margin-block-start: 0;
-    font-size: 38px;
-    line-height: 50px;
+    font-size: 34px;
+    line-height: 44px;
     color: var(--text-color);
-    letter-spacing: 2px;
-    margin-bottom: 50px;
+    margin-bottom: 56px;
   }
 
   input {
-    font-size: 32px;
-    line-height: 46px;
+    width: min(100%, 520px);
+    box-sizing: border-box;
+    font-size: 26px;
+    line-height: 38px;
     color: var(--desc-color);
     border: 0;
+    border-bottom: 1px solid var(--note-color);
+    background-color: transparent;
     outline: none;
     text-align: center;
+    padding: 6px 0 16px;
   }
 
   input::-webkit-input-placeholder {
@@ -137,32 +132,14 @@ onActivated(() => {
   }
 
   p {
-    margin-block-start: 30px;
-    margin-block-end: 10px;
+    margin-block-start: 22px;
+    margin-block-end: 0;
     font-size: 14px;
     color: var(--note-color);
     text-align: center;
-    max-width: 320px;
+    line-height: 1.7;
+    max-width: 360px;
     user-select: text;
-  }
-
-  .check-detail {
-    margin-top: 0;
-    
-    a {
-      // color: rgb(66, 133, 244);
-      color: var(--tap-color);
-      display: flex;
-      align-items: center;
-
-      .check-detail-question {
-        width: 16px;
-        height: 16px;
-        opacity: .5;
-        margin-right: 5px;
-        background-image: v-bind("'url(' + (theme === 'light' ? images.IC_QUESTION : images.IC_QUESTION_DM) + ')'");
-      }
-    }
   }
 
 }

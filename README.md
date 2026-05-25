@@ -1,69 +1,72 @@
-# 一起听播客
+# 一起听
 
-> 这是基于原项目改造的个人自用版。原项目来自 [yenche123/podcast-together](https://github.com/yenche123/podcast-together)，本版本将后端从 Laf 云函数迁移为可部署到自有云服务器的 Node.js 服务。
+一个用于和朋友实时同步听音频的自部署 Web 应用。项目基于 `podcast-together` 改造，后端已迁移为普通 Node.js 服务，可部署到自己的服务器。
 
-<img src="./resources/screenshot_index.png" width="700" />
+## 功能
 
-<img src="./resources/screenshot_listening.png" width="700" />
+- 创建房间后，把房间链接分享给朋友即可一起听。
+- 支持播放、暂停、进度、倍速同步。
+- 支持房主限制其他成员操作播放器。
+- 支持播客、音频直链和部分音乐平台单曲链接创建房间。
 
-> 跟你的好友一起实时连线听播客！
+## 支持的链接
 
-<br>
+当前支持：
 
-## 😎 如何使用
+- 播客链接：小宇宙、Apple Podcasts 中国区、常见播客网页。
+- 音频直链：公网可访问的 `.mp3`、`.m4a` 链接。
+- 喜马拉雅：需要后端配置开放平台应用。
+- 音乐平台单曲链接：网易云音乐、QQ 音乐、酷狗音乐、酷我音乐、百度/千千音乐。
 
-1. 打开小宇宙 App，在单集详情页，点击屏幕右上角的分享按钮（如下图所示），再点击复制链接。
+暂不支持：
 
-<img src="./resources/xyz_share.jpg" width="500" />
+- 歌单、专辑、歌手页直接创建房间。后端已预留识别入口，后续建议扩展为“解析列表后选择一首单曲创建房间”。
+- Bilibili、虾米。
+- 付费、会员、下架、地区受限，或平台接口不返回播放地址的内容。
 
-2. 访问你自己部署的网站创建房间，依页面的提示黏贴上一步复制到的链接，即可创建能跟好友一起实时聆听的播客房间。
+## 如何复制音乐链接
 
-原项目使用方式可参考[使用指南](https://yenche.zhubai.love/posts/2172097942360440832)。
+原则：打开歌曲详情页，直接复制浏览器地址栏里的链接即可。不要复制歌单、专辑或歌手页链接。
 
-<br>
+### 网易云音乐
 
-## 🎧 介绍
+- 网页端打开歌曲页，复制地址栏链接。
+- 常见形式：`https://music.163.com/#/song?id=3381828899`。
+- App 分享出来的网页链接如果最终能跳到歌曲详情页，也可以使用。
 
-网易云音乐能一起听歌却不支持一起听 Podcast，小宇宙也不支持，Spotify 需要成为会员才能一起听......
+### QQ 音乐
 
-百度了一下，没有人提供这项服务，我就只好自己开发了🥲
+- 网页端打开歌曲详情页，复制地址栏链接。
+- 常见形式：`https://y.qq.com/n/ryqq/songDetail/003mAan70zUy5O`。
+- 当前只创建单曲房间；会员或无版权歌曲会提示解析失败。
 
-### 1 无需登录，直接听
+### 酷狗音乐
 
-输入昵称，就可以进入房间，跟好友一起听啦！目前最多支持 15 人同时一起听。
+- 网页端打开歌曲详情页，复制地址栏链接。
+- 支持旧的 `hash` 链接和新的 `mixsong` 页面链接。
+- 常见形式：`https://www.kugou.com/song/#hash=...` 或 `https://www.kugou.com/mixsong/12f54x43.html?...`。
+- 如果歌曲本身不返回播放地址，会提示解析失败，不会创建无效房间。
 
-### 2 支持小宇宙 / Apple Podcast 中国区
+### 酷我音乐
 
-目前已知支持 `xiaoyuzhoufm.com/episode/` 或者 `podcasts.apple.com/cn/` 的链接（不支持短链），后者解析稍慢是正常的，如果解析失败不妨稍后再尝试。
+- 网页端打开歌曲详情页，复制地址栏链接。
+- 常见形式：`https://www.kuwo.cn/play_detail/263288`。
 
-另外，还支持 https 协议的 CDN 链接，也就是你上传 `.mp3` 文件至任意可公网访问的云上，获得 https 链接后即可黏贴到自己部署的网站中一起听。
+### 百度/千千音乐
 
-更多音源详情请参见[这里](https://github.com/yenche123/podcast-together/discussions/3)
-<br>
+- 网页端打开歌曲详情页，复制地址栏链接。
+- 常见形式：`https://music.91q.com/song/...` 或 `https://music.taihe.com/song/...`。
+- 该平台接口稳定性较弱；如果平台返回空播放地址，请换用其他平台的同一首歌链接。
 
-## 🧑‍💻 自行构建/部署
+## 本地开发
 
-本版本面向个人自部署使用，包含前端和普通云服务器后端：
-
-- 前端：Vite + Vue 3。
-- 后端：Node.js + Express + WebSocket + SQLite。
-- 已支持喜马拉雅分享链接解析，但需要服务端配置喜马拉雅开放平台应用。
-- 个人自用版仓库：[styleliyu/podcast-together-personal-](https://github.com/styleliyu/podcast-together-personal-)
-- 原始开源项目：[yenche123/podcast-together](https://github.com/yenche123/podcast-together)
-
-个人仓库克隆地址：
-
-```bash
-git clone https://github.com/styleliyu/podcast-together-personal-.git
-```
-
-### 本地开发
+建议使用 Node.js 18 LTS。
 
 前端：
 
 ```bash
-npm install
-npm run dev
+pnpm install
+pnpm dev
 ```
 
 后端：
@@ -74,9 +77,11 @@ npm install
 npm run dev
 ```
 
-### 环境变量
+如果 Windows 下安装后端依赖时 `better-sqlite3` 编译失败，优先切换到 Node.js 18；仍失败时安装 Visual Studio Build Tools，并勾选 `Desktop development with C++`。
 
-在项目根目录创建 `.env.local`：
+## 环境变量
+
+根目录创建 `.env.local`：
 
 ```env
 VITE_API_URL=https://你的域名/api
@@ -84,7 +89,7 @@ VITE_WEBSOCKET_URL=wss://你的域名/ws
 VITE_HEARTBEAT_PERIOD=15
 ```
 
-在 `server` 目录创建 `.env`：
+`server` 目录创建 `.env`：
 
 ```env
 HOST=127.0.0.1
@@ -101,16 +106,11 @@ XIMALAYA_DEVICE_ID_TYPE=
 XIMALAYA_SIG_MODE=md5_secret_concat
 ```
 
-喜马拉雅配置说明：
+## 部署
 
-- `XIMALAYA_APP_KEY` / `XIMALAYA_APP_SECRET` 来自喜马拉雅开放平台。
-- 应用需要具备免费声音播放地址接口权限。
-- 当前只支持开放平台可输出的免费声音；付费内容、无权限内容无法解析播放地址。
-- 如果开放平台调试工具提示签名错误，可把 `XIMALAYA_SIG_MODE` 改成 `hmac_sha1_md5` 后重启后端再试。
+完整部署步骤见 [DEPLOY_SERVER.md](./DEPLOY_SERVER.md)。
 
-### 服务器部署
-
-完整部署步骤见 [DEPLOY_SERVER.md](./DEPLOY_SERVER.md)。核心流程如下：
+常规流程：
 
 ```bash
 cd /www/wwwroot/podcast-together/server
@@ -120,24 +120,12 @@ pm2 start dist/index.js --name podcast-together-api
 pm2 save
 
 cd /www/wwwroot/podcast-together
-npm install
-npm run build
+pnpm install
+pnpm build
 ```
 
-Nginx 需要把 `/api/` 反向代理到后端 HTTP 服务，把 `/ws` 反向代理到 WebSocket 服务，并为域名配置 HTTPS 证书。
+Nginx 站点根目录指向前端 `dist`，并把 `/api/` 和 `/ws` 反向代理到后端服务。
 
-<br>
-
-## ✉️ 联系我
-
-1. 个人自用版仓库：[styleliyu/podcast-together-personal-](https://github.com/styleliyu/podcast-together-personal-)
-
-2. 原项目 Github [讨论区](https://github.com/yenche123/podcast-together/discussions)
-
-3. [Email](mailto:tsuiyenche@outlook.com)
-
-<br>
-
-## 开源协议
+## 许可
 
 MIT
