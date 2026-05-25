@@ -18,7 +18,10 @@ const {
   toHome, 
   toContact, 
   toEditMyName, 
-  onEveryoneCanOperatePlayerChange 
+  onEveryoneCanOperatePlayerChange,
+  onQueueItemTap,
+  onQueueAdvance,
+  onPlayModeChange,
 } = useRoomPage()
 const state = toRef(pageData, "state")
 const { 
@@ -47,6 +50,13 @@ const hasLink = computed(() => {
   return false
 })
 
+const playModeText = computed(() => {
+  const mode = pageData.queue?.playMode
+  if(mode === "shuffle") return "随机"
+  if(mode === "single") return "单曲循环"
+  return "顺序"
+})
+
 const onTapShowMore = () => {
   if(hasLink.value) {
     window.open(pageData.content?.linkUrl as string, "_blank")
@@ -65,7 +75,7 @@ const onTapShowMore = () => {
       <img :src="images.APP_LOGO_COS" height="132" width="132" />
       <p>{{ pageData.content?.title ? pageData.content.title 
         : pageData.content?.seriesName ? '邀请你一起听《' + pageData.content?.seriesName + '》' 
-        : '邀请你一起听播客！' }}</p>
+        : '邀请你一起听！' }}</p>
     </div>
 
 
@@ -83,6 +93,33 @@ const onTapShowMore = () => {
 
       <!-- 播放器 -->
       <div ref="playerEl" class="rp-player"></div>
+
+      <div v-if="pageData.queue?.items?.length" class="room-queue">
+        <div class="queue-head">
+          <div>
+            <h2>播放队列</h2>
+            <p>{{ (pageData.queue.currentIndex || 0) + 1 }} / {{ pageData.queue.items.length }}</p>
+          </div>
+          <div class="queue-actions">
+            <button @click="onQueueAdvance('prev')">上一首</button>
+            <button @click="onQueueAdvance('next')">下一首</button>
+            <button @click="onPlayModeChange">{{ playModeText }}</button>
+          </div>
+        </div>
+        <div class="queue-list">
+          <button
+            v-for="(item, index) in pageData.queue.items"
+            :key="item.id + '-' + index"
+            class="queue-item"
+            :class="{ 'queue-item_active': index === pageData.queue.currentIndex }"
+            @click="onQueueItemTap(index)"
+          >
+            <span class="queue-index">{{ index + 1 }}</span>
+            <span class="queue-title">{{ item.title }}</span>
+            <span class="queue-artist">{{ item.artist }}</span>
+          </button>
+        </div>
+      </div>
 
       <div class="room-virtual-one"></div>
 
@@ -284,6 +321,101 @@ const onTapShowMore = () => {
     height: 50px;
   }
 
+  .room-queue {
+    width: 100%;
+    margin-top: 24px;
+    border-top: 1px solid var(--card-color);
+    border-bottom: 1px solid var(--card-color);
+    padding: 18px 0;
+  }
+
+  .queue-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: center;
+
+    h2 {
+      margin: 0;
+      font-size: 20px;
+      line-height: 28px;
+    }
+
+    p {
+      margin: 4px 0 0;
+      color: var(--note-color);
+      font-size: 13px;
+    }
+  }
+
+  .queue-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+
+    button {
+      border: 0;
+      border-radius: 6px;
+      background: var(--other-btn-bg);
+      color: var(--other-btn-text);
+      height: 32px;
+      padding: 0 12px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+  }
+
+  .queue-list {
+    margin-top: 14px;
+    max-height: 320px;
+    overflow: auto;
+  }
+
+  .queue-item {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 36px minmax(0, 1fr) minmax(0, 140px);
+    gap: 12px;
+    align-items: center;
+    min-height: 42px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--desc-color);
+    text-align: left;
+    cursor: pointer;
+    padding: 0 10px;
+    font-size: 14px;
+
+    &:hover {
+      background: var(--card-color);
+    }
+  }
+
+  .queue-item_active {
+    color: var(--text-color);
+    background: var(--card-color);
+    font-weight: 700;
+  }
+
+  .queue-index {
+    color: var(--note-color);
+  }
+
+  .queue-title,
+  .queue-artist {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .queue-artist {
+    color: var(--note-color);
+    text-align: right;
+    font-size: 13px;
+  }
+
   h2 {
     font-size: var(--title-font);
     color: var(--text-color);
@@ -393,6 +525,23 @@ const onTapShowMore = () => {
 
     .room-virtual-two {
       height: 180px;
+    }
+
+    .queue-head {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    .queue-actions {
+      justify-content: flex-start;
+    }
+
+    .queue-item {
+      grid-template-columns: 30px minmax(0, 1fr);
+    }
+
+    .queue-artist {
+      display: none;
     }
   }
 

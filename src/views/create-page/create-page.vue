@@ -9,6 +9,8 @@ const { router, route } = useRouteAndPtRouter()
 const hasPrev = hasPreviousRouteInApp()
 const inputValue = ref<string>("")
 const inputEl = ref<HTMLInputElement | null>(null)
+const fileEl = ref<HTMLInputElement | null>(null)
+const isPersistent = ref(false)
 
 const hasQuery = ref(false)
 // 监听 query 的变化，更新 hasQuery
@@ -30,13 +32,24 @@ const canSubmit = computed(() => {
 const onInputConfirm = () => {
   inputEl?.value?.blur()
   if(!canSubmit.value) return
-  cp.finishInput(inputValue.value, router, route)
+  cp.finishInput(inputValue.value, router, route, isPersistent.value)
 }
 
 const onTapConfirm = () => {
   if(!canSubmit.value) return
-  cp.finishInput(inputValue.value, router, route)
+  cp.finishInput(inputValue.value, router, route, isPersistent.value)
   inputEl?.value?.blur()
+}
+
+const onTapUpload = () => {
+  fileEl.value?.click()
+}
+
+const onFileChange = () => {
+  const files = Array.from(fileEl.value?.files || [])
+  if(!files.length) return
+  cp.finishUpload(files, router, route, isPersistent.value)
+  if(fileEl.value) fileEl.value.value = ""
 }
 
 const onTapBack = () => {
@@ -72,7 +85,19 @@ onActivated(() => {
         maxlength="1000"
         ref="inputEl"
       />
-      <p>支持播客、mp3/m4a、网易云、QQ、酷狗、酷我、百度音乐单曲链接</p>
+      <p>支持播客、mp3/m4a、网易云、QQ、酷狗、酷我、百度音乐单曲和歌单链接</p>
+      <label class="persistent-row">
+        <input v-model="isPersistent" type="checkbox" />
+        <span>常驻房间</span>
+      </label>
+      <input
+        ref="fileEl"
+        class="file-input"
+        type="file"
+        accept=".mp3,.m4a,.aac,audio/mpeg,audio/mp4,audio/aac"
+        multiple
+        @change="onFileChange"
+      />
     </div>
     <div class="page-btns-virtual"></div>
   </div>
@@ -85,6 +110,7 @@ onActivated(() => {
         :disabled="!canSubmit"
       />
       <pt-button :text="hasPrev ? '返回' : '回首页'" type="other" @click="onTapBack"></pt-button>
+      <pt-button text="导入本地歌曲" type="other" @click="onTapUpload"></pt-button>
     </div>
   </div>
 
@@ -140,6 +166,26 @@ onActivated(() => {
     line-height: 1.7;
     max-width: 360px;
     user-select: text;
+  }
+
+  .persistent-row {
+    margin-top: 18px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--desc-color);
+    font-size: 14px;
+    cursor: pointer;
+
+    input {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--text-color);
+    }
+  }
+
+  .file-input {
+    display: none;
   }
 
 }

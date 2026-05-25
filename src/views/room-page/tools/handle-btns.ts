@@ -88,7 +88,7 @@ export function initBtns(
     const c = pageData.content
     const url = location.href
     let shareData: ShareData = {
-      title: c?.seriesName ? `邀请你一起听《${c.seriesName}》` : `邀请你一起听播客`,
+      title: c?.seriesName ? `邀请你一起听《${c.seriesName}》` : `邀请你一起听`,
       text: c?.title ? c.title : `实时在线一起听！`,
       url,
     }

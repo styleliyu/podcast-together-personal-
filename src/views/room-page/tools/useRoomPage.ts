@@ -5,7 +5,7 @@
  */
 import { ref, reactive, onActivated, onDeactivated, nextTick } from "vue"
 import { PageData, PageState, WsMsgRes, RoomStatus, PlayStatus, RevokeType } from "../../../type/type-room-page"
-import { ContentData, RequestRes, RoRes } from "../../../type"
+import { ContentData, PlayMode, RequestRes, RoRes } from "../../../type"
 import { RouteLocationNormalizedLoaded } from "vue-router"
 import { useRouteAndPtRouter, PtRouter, goHome } from "../../../routes/pt-router"
 import ptUtil from "../../../utils/pt-util"
@@ -44,7 +44,8 @@ const pageData: PageData = reactive({
   participants: [],
   showMoreBox: false,   // 是否要展示 “展开更多” 的按钮
   amIOwner: false,
-  everyoneCanOperatePlayer: "Y"
+  everyoneCanOperatePlayer: "Y",
+  queue: undefined
 })
 
 // 其他杂七杂八的数据
@@ -112,6 +113,50 @@ const onEveryoneCanOperatePlayerChange = (opt: { checked: boolean }) => {
   collectLatestStatus()
 }
 
+const canOperatePlayer = (): boolean => {
+  return pageData.amIOwner || pageData.everyoneCanOperatePlayer !== "N"
+}
+
+const onQueueItemTap = (index: number) => {
+  if(!canOperatePlayer()) {
+    showOperateFailed()
+    return
+  }
+  sendToWebSocket(ws, {
+    operateType: "SET_QUEUE_INDEX",
+    roomId: pageData.roomId,
+    "x-pt-local-id": localId,
+    "x-pt-stamp": time.getTime(),
+    index
+  })
+}
+
+const onQueueAdvance = (direction: "next" | "prev") => {
+  if(!canOperatePlayer()) {
+    showOperateFailed()
+    return
+  }
+  sendAdvanceQueue(direction)
+}
+
+const onPlayModeChange = () => {
+  if(!pageData.queue) return
+  if(!canOperatePlayer()) {
+    showOperateFailed()
+    return
+  }
+  const order: PlayMode[] = ["sequence", "shuffle", "single"]
+  const current = pageData.queue.playMode
+  const next = order[(order.indexOf(current) + 1) % order.length]
+  sendToWebSocket(ws, {
+    operateType: "SET_PLAY_MODE",
+    roomId: pageData.roomId,
+    "x-pt-local-id": localId,
+    "x-pt-stamp": time.getTime(),
+    playMode: next
+  })
+}
+
 export const useRoomPage = () => {
   const rr = useRouteAndPtRouter()
   router = rr.router
@@ -128,6 +173,9 @@ export const useRoomPage = () => {
     toContact, 
     toEditMyName,
     onEveryoneCanOperatePlayerChange,
+    onQueueItemTap,
+    onQueueAdvance,
+    onPlayModeChange,
   }
 }
 
@@ -196,6 +244,7 @@ function enterResToErrState(res?: RequestRes) {
 function afterEnter(roRes: RoRes) {
   guestId = roRes?.guestId ?? ""
   pageData.content = roRes.content
+  pageData.queue = roRes.queue
   pageData.amIOwner = roRes?.iamOwner === "Y" ? true : false
   pageData.participants = showParticipants(roRes.participants, guestId)
   pageData.showMoreBox = handleShowMoreBox(roRes.content)
@@ -209,6 +258,11 @@ function afterEnter(roRes: RoRes) {
 // 创建播放器
 function createPlayer() {
   let content = pageData.content as ContentData
+  if(player) {
+    player.destroy()
+    player = null
+  }
+  srcDuration = 0
 
   waitPlayer = new Promise((a: SimpleFunc) => {
     playerAlready = a
@@ -259,6 +313,10 @@ function createPlayer() {
     }
     collectLatestStatus()
   }
+  const ended = (e: Event) => {
+    if(!pageData.queue) return
+    sendAdvanceQueue("auto")
+  }
   const callbacks = {
     durationchange,
     canplay,
@@ -266,7 +324,8 @@ function createPlayer() {
     pause,
     playing,
     ratechange,
-    seeked
+    seeked,
+    ended
   }
 
   const onBeforeClick = (target: string): boolean => {
@@ -282,6 +341,18 @@ function createPlayer() {
 
   player = initPlayer(playerEl, audio, callbacks, onBeforeClick)
   checkPlayerReady()
+}
+
+function sendAdvanceQueue(direction: "next" | "prev" | "auto") {
+  if(!pageData.queue) return
+  sendToWebSocket(ws, {
+    operateType: "ADVANCE_QUEUE",
+    roomId: pageData.roomId,
+    "x-pt-local-id": localId,
+    "x-pt-stamp": time.getTime(),
+    direction,
+    fromIndex: pageData.queue.currentIndex
+  })
 }
 
 let lastShowOperateFailed = 0
@@ -396,6 +467,7 @@ function heartbeat() {
 
   const _newRoomStatus = (roRes: RoRes) => {
     pageData.content = roRes.content
+    pageData.queue = roRes.queue
     pageData.participants = showParticipants(roRes.participants, guestId)
 
     const now = time.getLocalTime()
@@ -416,11 +488,15 @@ function heartbeat() {
 
     latestStatus = {
       roomId: roRes.roomId,
+      content: roRes.content,
       playStatus: roRes.playStatus,
       speedRate: roRes.speedRate,
       operator: roRes.operator,
       contentStamp: roRes.contentStamp,
-      operateStamp: roRes.operateStamp
+      operateStamp: roRes.operateStamp,
+      queue: roRes.queue,
+      currentIndex: roRes.currentIndex,
+      playMode: roRes.playMode
     }
     if(roRes.everyoneCanOperatePlayer) {
       pageData.everyoneCanOperatePlayer = roRes.everyoneCanOperatePlayer
@@ -514,6 +590,7 @@ async function resume() {
   let roRes = res.data as RoRes
   guestId = roRes.guestId ?? ""
   pageData.content = roRes.content
+  pageData.queue = roRes.queue
   pageData.participants = showParticipants(roRes.participants, guestId)
   heartbeat()
   connectWebSocket()
@@ -537,6 +614,12 @@ function connectWebSocket() {
       // console.log(" ")
       lastNewStatusFromWsStamp = time.getLocalTime()
       latestStatus = roomStatus
+      if(roomStatus.content && roomStatus.content.audioUrl !== pageData.content?.audioUrl) {
+        pageData.content = roomStatus.content
+        pageData.showMoreBox = handleShowMoreBox(roomStatus.content)
+        createPlayer()
+      }
+      if(roomStatus.queue) pageData.queue = roomStatus.queue
       if(roomStatus.everyoneCanOperatePlayer) {
         pageData.everyoneCanOperatePlayer = roomStatus.everyoneCanOperatePlayer
       }
@@ -592,6 +675,12 @@ function firstSend() {
 
 async function receiveNewStatus(fromType: RevokeType = "ws") {
   if(latestStatus.roomId !== pageData.roomId) return
+  if(latestStatus.content && latestStatus.content.audioUrl !== pageData.content?.audioUrl) {
+    pageData.content = latestStatus.content
+    pageData.showMoreBox = handleShowMoreBox(latestStatus.content)
+    createPlayer()
+  }
+  if(latestStatus.queue) pageData.queue = latestStatus.queue
 
   await waitPlayer
   let { contentStamp } = latestStatus

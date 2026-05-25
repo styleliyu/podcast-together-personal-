@@ -4,9 +4,9 @@ import { ShareCfgData } from "../../../type/type-share"
 import share from "../../../utils/share"
 
 export const shareData = (c: ContentData, playStatus: string, nickName: string) => {
-  let frdTitle = c.seriesName ? `${nickName} 邀请你一起听《${c.seriesName}》` : `${nickName} 邀请你一起听播客`
-  let pyqTitle = c.title ? `${nickName} 邀请你一起听 ${c.title}` : `${nickName} 邀请你一起听播客`
-  let desc = c.title ? c.title : "一起听播客"
+  let frdTitle = c.seriesName ? `${nickName} 邀请你一起听《${c.seriesName}》` : `${nickName} 邀请你一起听`
+  let pyqTitle = c.title ? `${nickName} 邀请你一起听 ${c.title}` : `${nickName} 邀请你一起听`
+  let desc = c.title ? c.title : "一起听"
 
   let opt: ShareCfgData = {
     title: frdTitle,

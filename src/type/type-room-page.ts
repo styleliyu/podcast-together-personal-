@@ -1,5 +1,5 @@
 // 仅用于 room-page 的类型
-import { ContentData } from "./index"
+import { ContentData, PlayMode, RoomQueue } from "./index"
 
 /**
  * 1: 正在进入房间...
@@ -35,6 +35,7 @@ export interface PageData {
   showMoreBox: boolean,
   amIOwner: boolean,
   everyoneCanOperatePlayer: "Y" | "N"
+  queue?: RoomQueue
 }
 
 type SpeedRate = "0.8" | "1" | "1.2" | "1.5" | "1.7"
@@ -49,6 +50,10 @@ export interface RoomStatus {
   contentStamp: number
   operateStamp: number
   everyoneCanOperatePlayer?: "Y" | "N"
+  content?: ContentData
+  queue?: RoomQueue
+  currentIndex?: number
+  playMode?: PlayMode
 }
 
 export interface WsMsgRes {
@@ -57,5 +62,4 @@ export interface WsMsgRes {
 }
 
 export type RevokeType = "ws" | "http" | "check"
-
 

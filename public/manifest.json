@@ -2,9 +2,9 @@
   "scope": "/",
   "display": "standalone",
   "start_url": "/",
-  "name": "\u4e00\u8d77\u542c\u64ad\u5ba2",
-  "short_name": "\u4e00\u8d77\u542c\u64ad\u5ba2",
-  "description": "一起跟好友听播客吧！",
+  "name": "一起听",
+  "short_name": "一起听",
+  "description": "和朋友实时同步听音乐、播客和本地音频。",
   "theme_color": "#282828",
   "background_color": "#181818",
   "orientation": "any",
@@ -60,7 +60,8 @@
     }
   },
   "features": [
-    "Podcast",
+    "music",
+    "podcast",
     "listening together",
     "realtime",
     "simple"
@@ -81,7 +82,7 @@
       "name": "联系开发者",
       "short_name": "联系",
       "url": "/contact",
-      "description": "立即加群，一起听播客！",
+      "description": "联系开发者",
       "icons": [{ "src": "pwa/ic_phone.png", "sizes": "96x96" }]
     }
   ],

@@ -36,6 +36,26 @@ export interface ContentData {
   linkUrl?: string
   seriesName?: string   // 播客专栏名称，比如 "商业就是这样"
   seriesUrl?: string    // 播客专栏链接
+  queue?: RoomQueue
+}
+
+export type PlayMode = "sequence" | "shuffle" | "single"
+
+export interface QueueItem {
+  id: string
+  sourceType: string
+  title: string
+  artist?: string
+  imageUrl?: string
+  linkUrl?: string
+  resourceId?: string
+  audioUrl?: string
+}
+
+export interface RoomQueue {
+  items: QueueItem[]
+  currentIndex: number
+  playMode: PlayMode
 }
 
 export interface RoRes {
@@ -50,6 +70,10 @@ export interface RoRes {
   guestId?: string
   iamOwner?: "Y" | "N"
   everyoneCanOperatePlayer?: "Y" | "N"
+  queue?: RoomQueue
+  currentIndex?: number
+  playMode?: PlayMode
+  isPersistent?: boolean
 }
 
 

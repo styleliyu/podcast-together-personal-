@@ -7,6 +7,7 @@ import { handleRoomOperate } from "./roomService"
 import { startRoomClock } from "./clock"
 import { setupWebSocket } from "./websocket"
 import { dbPath } from "./db"
+import { getUploadRoot, handleUploadAudio, handleUploadError, uploadMiddleware } from "./upload"
 
 const app = express()
 const port = Number(process.env.PORT || 3001)
@@ -16,6 +17,11 @@ const roomClockIntervalMs = Number(process.env.ROOM_CLOCK_INTERVAL_MS || 30000)
 
 app.use(cors({ origin: corsOrigin === "*" ? true : corsOrigin }))
 app.use(express.json({ limit: "1mb" }))
+app.use("/uploads", express.static(getUploadRoot(), {
+  setHeaders(res) {
+    res.setHeader("Accept-Ranges", "bytes")
+  }
+}))
 
 app.get("/health", (_req, res) => {
   res.json({ code: "0000", data: { status: "ok" } })
@@ -38,6 +44,9 @@ app.post("/api/parse-text", async (req, res) => {
   })
   res.json(result)
 })
+
+app.post("/api/upload-audio", uploadMiddleware, handleUploadAudio)
+app.use(handleUploadError)
 
 app.post("/api/room-operate", async (req, res) => {
   const result = await handleRoomOperate({

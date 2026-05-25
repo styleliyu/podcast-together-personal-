@@ -27,6 +27,7 @@ export interface ContentData {
   linkUrl?: string
   seriesName?: string
   seriesUrl?: string
+  queue?: RoomQueue
 }
 
 export interface Participant {
@@ -47,6 +48,24 @@ export interface ParticipantClient {
 
 export type SpeedRate = "0.8" | "1" | "1.2" | "1.5" | "1.7"
 export type PlayStatus = "PLAYING" | "PAUSED"
+export type PlayMode = "sequence" | "shuffle" | "single"
+
+export interface QueueItem {
+  id: string
+  sourceType: string
+  title: string
+  artist?: string
+  imageUrl?: string
+  linkUrl?: string
+  resourceId?: string
+  audioUrl?: string
+}
+
+export interface RoomQueue {
+  items: QueueItem[]
+  currentIndex: number
+  playMode: PlayMode
+}
 
 export interface RoomConfig {
   everyoneCanOperatePlayer: "Y" | "N"
@@ -66,6 +85,8 @@ export interface Room {
   owner: string
   participants: Participant[]
   config?: RoomConfig
+  queue?: RoomQueue
+  isPersistent?: boolean
 }
 
 export interface RoRes {
@@ -80,6 +101,10 @@ export interface RoRes {
   guestId?: string
   iamOwner?: "Y" | "N"
   everyoneCanOperatePlayer?: "Y" | "N"
+  queue?: RoomQueue
+  currentIndex?: number
+  playMode?: PlayMode
+  isPersistent?: boolean
 }
 
 export interface Visitor {
@@ -103,6 +128,10 @@ export interface RoomStatus {
   contentStamp: number
   operateStamp: number
   everyoneCanOperatePlayer?: "Y" | "N"
+  content?: ContentData
+  queue?: RoomQueue
+  currentIndex?: number
+  playMode?: PlayMode
 }
 
 export interface ResToFe {
@@ -111,7 +140,7 @@ export interface ResToFe {
 }
 
 export interface ReqBase {
-  operateType: "FIRST_SEND" | "SET_PLAYER" | "HEARTBEAT"
+  operateType: "FIRST_SEND" | "SET_PLAYER" | "HEARTBEAT" | "SET_QUEUE_INDEX" | "ADVANCE_QUEUE" | "SET_PLAY_MODE"
   roomId: string
   "x-pt-local-id": string
   "x-pt-stamp": number
@@ -123,6 +152,22 @@ export interface ReqOperatePlayer extends ReqBase {
   speedRate: SpeedRate
   contentStamp: number
   everyoneCanOperatePlayer?: "Y" | "N"
+}
+
+export interface ReqSetQueueIndex extends ReqBase {
+  operateType: "SET_QUEUE_INDEX"
+  index: number
+}
+
+export interface ReqAdvanceQueue extends ReqBase {
+  operateType: "ADVANCE_QUEUE"
+  direction: "next" | "prev" | "auto"
+  fromIndex: number
+}
+
+export interface ReqSetPlayMode extends ReqBase {
+  operateType: "SET_PLAY_MODE"
+  playMode: PlayMode
 }
 
 export interface RequestContext {

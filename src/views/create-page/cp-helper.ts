@@ -2,7 +2,7 @@ import { PtRouter, VueRoute } from "../../routes/pt-router"
 import time from "../../utils/time"
 import { ContentData, RoRes } from "../../type"
 import cui from "../../components/custom-ui"
-import { request_create, request_parse } from "./cp-request"
+import { request_create, request_parse, request_upload_audio } from "./cp-request"
 import util from "../../utils/util"
 
 let lastIntoFinishInput: number = 0
@@ -30,8 +30,9 @@ const _createRoom = async (
   router: PtRouter, 
   route: VueRoute,
   fromQuery: boolean = false,
+  isPersistent: boolean = false,
 ): Promise<void> => {
-  const res = await request_create(roomData)
+  const res = await request_create(roomData, isPersistent)
   cui.hideLoading()
 
   if(res?.code !== "0000") {
@@ -51,7 +52,7 @@ const _createRoom = async (
   router.replace({ name: "room", params: { roomId } })
 }
 
-const finishInput = async (link: string, router: PtRouter, route: VueRoute): Promise<void> => {
+const finishInput = async (link: string, router: PtRouter, route: VueRoute, isPersistent: boolean = false): Promise<void> => {
   const now = time.getTime()
   if(lastIntoFinishInput + 500 > now) return
   lastIntoFinishInput = now
@@ -64,7 +65,20 @@ const finishInput = async (link: string, router: PtRouter, route: VueRoute): Pro
   }
 
   let contentData = res.data as ContentData
-  _createRoom(contentData, router, route)
+  _createRoom(contentData, router, route, false, isPersistent)
+}
+
+const finishUpload = async (files: File[], router: PtRouter, route: VueRoute, isPersistent: boolean = false): Promise<void> => {
+  if(!files.length) return
+  cui.showLoading({ title: "上传中.." })
+  const res = await request_upload_audio(files)
+  if(res?.code !== "0000") {
+    _showErr()
+    return
+  }
+
+  let contentData = res.data as ContentData
+  _createRoom(contentData, router, route, false, isPersistent)
 }
 
 const getTargetLink = (route: VueRoute): string => {
@@ -105,5 +119,6 @@ const useLinkFromQuery = async (router: PtRouter, route: VueRoute) => {
 
 export default {
   finishInput,
+  finishUpload,
   useLinkFromQuery,
 }

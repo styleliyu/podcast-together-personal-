@@ -1,6 +1,6 @@
 import axios from "axios"
 import crypto from "crypto"
-import type { ContentData, RequestRes } from "../types"
+import type { ContentData, QueueItem, RequestRes, RoomQueue } from "../types"
 
 export type MusicPlatform = "netease" | "tencent" | "kugou" | "kuwo" | "baidu"
 export type MusicResourceKind = "track" | "playlist" | "album"
@@ -41,9 +41,10 @@ export async function parseMusicLink(link: string): Promise<RequestRes<ContentDa
   if (!resource) return null
 
   if (resource.kind !== "track") {
+    if (resource.kind === "playlist") return parsePlaylist(resource)
     return {
       code: "E4004",
-      showMsg: "当前仅支持音乐单曲链接创建房间，歌单和专辑入口已预留。"
+      showMsg: "当前暂不支持专辑链接直接创建房间。"
     }
   }
 
@@ -63,6 +64,60 @@ export async function parseMusicLink(link: string): Promise<RequestRes<ContentDa
       showMsg: "音乐链接解析失败，请更换单曲链接或稍后再试。"
     }
   }
+}
+
+export async function resolveQueueItemContent(item: QueueItem): Promise<ContentData | null> {
+  if (item.audioUrl) {
+    return {
+      infoType: "podcast",
+      audioUrl: item.audioUrl,
+      sourceType: item.sourceType,
+      title: item.title,
+      imageUrl: item.imageUrl || "",
+      linkUrl: item.linkUrl || "",
+      seriesName: item.artist || sourceNameFromString(item.sourceType)
+    }
+  }
+
+  if (!isMusicPlatform(item.sourceType) || !item.resourceId) return null
+  const data = await resolveTrack({
+    platform: item.sourceType,
+    kind: "track",
+    id: item.resourceId,
+    linkUrl: item.linkUrl || ""
+  })
+  return data
+}
+
+async function parsePlaylist(resource: MusicResource): Promise<RequestRes<ContentData>> {
+  try {
+    const items = await resolvePlaylistItems(resource)
+    if (!items.length) {
+      return { code: "E4004", showMsg: "歌单为空或平台暂时没有返回曲目列表。" }
+    }
+
+    for (let i = 0; i < items.length; i++) {
+      const content = await resolveQueueItemContent(items[i])
+      if (!content?.audioUrl) continue
+      items[i] = { ...items[i], audioUrl: content.audioUrl }
+      const queue: RoomQueue = { items, currentIndex: i, playMode: "sequence" }
+      return { code: "0000", data: { ...content, queue } }
+    }
+
+    return { code: "E4004", showMsg: "歌单中没有可播放的歌曲，请更换歌单或平台。" }
+  } catch (err: any) {
+    console.error("playlist parse failed", err?.code || err?.message || err)
+    return { code: "E4004", showMsg: "歌单解析失败，请更换链接或稍后再试。" }
+  }
+}
+
+async function resolvePlaylistItems(resource: MusicResource): Promise<QueueItem[]> {
+  if (resource.platform === "netease") return getNeteasePlaylistItems(resource.id)
+  if (resource.platform === "tencent") return getTencentPlaylistItems(resource.id)
+  if (resource.platform === "kugou") return getKugouPlaylistItems(resource.id)
+  if (resource.platform === "kuwo") return getKuwoPlaylistItems(resource.id)
+  if (resource.platform === "baidu") return getBaiduPlaylistItems(resource.id)
+  return []
 }
 
 function parseMusicResource(link: string): MusicResource | null {
@@ -183,7 +238,10 @@ function parseKugou(url: URL, linkUrl: string): MusicResource | null {
 
 function parseKuwo(url: URL, linkUrl: string): MusicResource | null {
   const text = linkText(url)
-  const playlistId = pickParamAnywhere(url, text, ["pid", "playlistid"]) || pickMatch(text, [/\/playlist(?:\/index)?\/?(\d+)/i])
+  const playlistId = pickParamAnywhere(url, text, ["pid", "playlistid"]) || pickMatch(text, [
+    /\/playlist(?:\/index)?\/?(\d+)/i,
+    /\/playlist_detail\/(\d+)/i
+  ])
   if (/playlist|歌单/i.test(text)) {
     return playlistId ? { platform: "kuwo", kind: "playlist", id: playlistId, linkUrl } : null
   }
@@ -276,6 +334,24 @@ async function getNeteasePlayUrl(songId: string): Promise<PlayUrl> {
   return { url: item?.url || "", br: item?.br ? item.br / 1000 : undefined }
 }
 
+async function getNeteasePlaylistItems(playlistId: string): Promise<QueueItem[]> {
+  const res = await http.get("https://music.163.com/api/v6/playlist/detail", {
+    params: { id: playlistId },
+    headers: getNeteaseHeaders()
+  })
+  const tracks = parseMaybeJson(res.data)?.playlist?.tracks
+  if (!Array.isArray(tracks)) return []
+  return tracks.map((song: any) => ({
+    id: `netease:${song.id}`,
+    sourceType: "netease",
+    resourceId: String(song.id),
+    title: cleanMetaText(song.name) || "网易云音乐",
+    artist: Array.isArray(song.ar || song.artists) ? (song.ar || song.artists).map((v: any) => v.name).filter(Boolean).join(" / ") : "",
+    imageUrl: song.al?.picUrl || song.album?.picUrl || "",
+    linkUrl: `https://music.163.com/#/song?id=${song.id}`
+  }))
+}
+
 function getNeteaseHeaders(): Record<string, string> {
   return {
     Referer: "https://music.163.com/",
@@ -306,9 +382,7 @@ async function getTencentDetail(songMid: string): Promise<any> {
       platform: "yqq",
       format: "json"
     },
-    headers: {
-      Referer: "https://y.qq.com/"
-    }
+    headers: getTencentHeaders()
   })
   return parseMaybeJson(res.data)
 }
@@ -342,21 +416,134 @@ async function getTencentPlayUrl(songMid: string, mediaMid: string, songType = 0
       cv: 0
     }
   }
-  const res = await http.get("https://u.y.qq.com/cgi-bin/musicu.fcg", {
-    params: {
-      format: "json",
-      platform: "yqq.json",
-      needNewCode: 0,
-      data: JSON.stringify(payload)
-    },
-    headers: {
-      Referer: "https://y.qq.com/"
+  try {
+    const res = await http.get("https://u.y.qq.com/cgi-bin/musicu.fcg", {
+      params: {
+        format: "json",
+        platform: "yqq.json",
+        needNewCode: 0,
+        data: JSON.stringify(payload)
+      },
+      headers: getTencentHeaders()
+    })
+    const data = parseMaybeJson(res.data)
+    const sip = data?.req_0?.data?.sip?.[0] || "https://dl.stream.qqmusic.qq.com/"
+    const item = data?.req_0?.data?.midurlinfo?.find((v: any) => v?.purl)
+    if (item?.purl) return { url: `${sip}${item.purl}`, br: item?.songmid ? 128 : -1 }
+  } catch {}
+
+  return getTencentPlayUrlByCopws(songMid, mediaMid)
+}
+
+async function getTencentPlayUrlByCopws(songMid: string, mediaMid: string): Promise<PlayUrl> {
+  const qualities = [
+    { quality: 320, prefix: "M800", suffix: "mp3" },
+    { quality: 128, prefix: "M500", suffix: "mp3" },
+    { quality: 96, prefix: "C400", suffix: "m4a" }
+  ]
+  const fileMids = Array.from(new Set([mediaMid, songMid].filter(Boolean)))
+
+  for (const fileMid of fileMids) {
+    for (const quality of qualities) {
+      const payload = {
+        req_1: {
+          module: "vkey.GetVkeyServer",
+          method: "CgiGetVkey",
+          param: {
+            filename: [`${quality.prefix}${fileMid}${fileMid}.${quality.suffix}`],
+            guid: "10000",
+            songmid: [songMid],
+            songtype: [0],
+            uin: "0",
+            loginflag: 1,
+            platform: "20"
+          }
+        },
+        loginUin: "0",
+        comm: {
+          uin: "0",
+          format: "json",
+          ct: 24,
+          cv: 0
+        }
+      }
+
+      try {
+        const res = await http.post("https://u.y.qq.com/cgi-bin/musicu.fcg", payload, {
+          headers: getTencentHeaders({
+            Accept: "application/json, text/plain, */*",
+            "Content-Type": "application/json;charset=UTF-8"
+          })
+        })
+        const data = parseMaybeJson(res.data)
+        const sip = data?.req_1?.data?.sip?.[0] || "https://dl.stream.qqmusic.qq.com/"
+        const purl = data?.req_1?.data?.midurlinfo?.[0]?.purl
+        if (purl) return { url: `${sip}${purl}`, br: quality.quality }
+      } catch {}
     }
-  })
-  const data = parseMaybeJson(res.data)
-  const sip = data?.req_0?.data?.sip?.[0] || "https://dl.stream.qqmusic.qq.com/"
-  const item = data?.req_0?.data?.midurlinfo?.find((v: any) => v?.purl)
-  return { url: item?.purl ? `${sip}${item.purl}` : "", br: item?.songmid ? 128 : -1 }
+  }
+
+  return { url: "", br: -1 }
+}
+
+async function getTencentPlaylistItems(disstid: string): Promise<QueueItem[]> {
+  let tracks = await requestTencentPlaylist("https://c.y.qq.com/qzone/fcg-bin/fcg_ucc_getcdinfo_byids_cp.fcg", disstid)
+  if (!Array.isArray(tracks) || !tracks.length) {
+    tracks = await requestTencentPlaylist("https://i.y.qq.com/qzone-music/fcg-bin/fcg_ucc_getcdinfo_byids_cp.fcg", disstid)
+  }
+  if (!Array.isArray(tracks)) return []
+  return tracks.map((song: any) => {
+    const mid = song.songmid || song.mid
+    return {
+      id: `tencent:${mid || song.songid}`,
+      sourceType: "tencent",
+      resourceId: String(mid || song.songid || ""),
+      title: cleanMetaText(song.songname || song.name) || "QQ音乐",
+      artist: Array.isArray(song.singer) ? song.singer.map((v: any) => v.name).filter(Boolean).join(" / ") : "",
+      imageUrl: song.albummid ? `https://y.gtimg.cn/music/photo_new/T002R300x300M000${song.albummid}.jpg?max_age=2592000` : "",
+      linkUrl: mid ? `https://y.qq.com/n/ryqq/songDetail/${mid}` : ""
+    }
+  }).filter((item: QueueItem) => item.resourceId)
+}
+
+async function requestTencentPlaylist(endpoint: string, disstid: string): Promise<any[]> {
+  try {
+    const res = await http.get(endpoint, {
+      params: {
+        type: 1,
+        json: 1,
+        utf8: 1,
+        onlysong: 0,
+        nosign: 1,
+        disstid,
+        g_tk: 5381,
+        loginUin: 0,
+        hostUin: 0,
+        format: "json",
+        inCharset: "GB2312",
+        outCharset: "utf-8",
+        notice: 0,
+        platform: "yqq",
+        needNewCode: 0
+      },
+      headers: getTencentHeaders()
+    })
+    const tracks = parseMaybeJson(res.data)?.cdlist?.[0]?.songlist
+    return Array.isArray(tracks) ? tracks : []
+  } catch {
+    return []
+  }
+}
+
+function getTencentHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  const headers: Record<string, string> = {
+    Referer: "https://y.qq.com/",
+    Origin: "https://y.qq.com",
+    "User-Agent": "Mozilla/5.0 podcast-together music resolver",
+    ...extra
+  }
+  if (process.env.QQ_MUSIC_COOKIE) headers.Cookie = process.env.QQ_MUSIC_COOKIE
+  return headers
 }
 
 async function resolveKugouTrack(resource: MusicResource): Promise<ContentData | null> {
@@ -513,6 +700,32 @@ async function getKugouMobilePlayUrl(hash: string): Promise<PlayUrl> {
   }
 }
 
+async function getKugouPlaylistItems(specialId: string): Promise<QueueItem[]> {
+  const res = await http.get("http://mobilecdn.kugou.com/api/v3/special/song", {
+    params: {
+      specialid: specialId,
+      page: 1,
+      pagesize: 100000,
+      format: "json"
+    },
+    headers: { Referer: "https://www.kugou.com/" }
+  })
+  const list = parseMaybeJson(res.data)?.data?.info
+  if (!Array.isArray(list)) return []
+  return list.map((song: any) => {
+    const hash = song.hash || song.Hash
+    return {
+      id: `kugou:${hash || song.audio_id}`,
+      sourceType: "kugou",
+      resourceId: String(hash || ""),
+      title: cleanMetaText(song.songname || song.filename || song.name) || "酷狗音乐",
+      artist: song.singername || song.singer || "",
+      imageUrl: typeof song.imgurl === "string" ? song.imgurl.replace("{size}", "400") : "",
+      linkUrl: hash ? `https://www.kugou.com/song/#hash=${hash}` : ""
+    }
+  }).filter((item: QueueItem) => item.resourceId)
+}
+
 async function resolveKuwoTrack(resource: MusicResource): Promise<ContentData | null> {
   const [meta, playUrl] = await Promise.all([
     getKuwoMeta(resource.id),
@@ -573,6 +786,46 @@ async function getKuwoPlayUrl(id: string): Promise<PlayUrl> {
   return { url, br: 128 }
 }
 
+async function getKuwoPlaylistItems(pid: string): Promise<QueueItem[]> {
+  const pageSize = 100
+  const all: any[] = []
+  let total = Number.POSITIVE_INFINITY
+  for (let page = 0; all.length < total; page++) {
+    const res = await http.get("http://nplserver.kuwo.cn/pl.svc", {
+      params: {
+        op: "getlistinfo",
+        pid,
+        pn: page,
+        rn: pageSize,
+        encode: "utf-8",
+        keyset: "pl2012",
+        identity: "kuwo"
+      },
+      headers: {
+        Referer: "https://www.kuwo.cn/"
+      }
+    })
+    const data = parseMaybeJson(res.data)
+    const list = data?.musiclist
+    if (!Array.isArray(list) || !list.length) break
+    all.push(...list)
+    total = Number(data?.total || all.length)
+    if (list.length < pageSize) break
+  }
+  return all.map((song: any) => {
+    const id = song.id || song.ID || song.musicrid?.replace(/^MUSIC_/, "") || song.MUSICRID?.replace(/^MUSIC_/, "")
+    return {
+      id: `kuwo:${id}`,
+      sourceType: "kuwo",
+      resourceId: String(id || ""),
+      title: cleanMetaText(song.name || song.NAME) || "酷我音乐",
+      artist: song.artist || song.ARTIST || song.FARTIST || "",
+      imageUrl: song.pic || song.PIC || "",
+      linkUrl: id ? `https://www.kuwo.cn/play_detail/${id}` : ""
+    }
+  }).filter((item: QueueItem) => item.resourceId)
+}
+
 function getKuwoHeaders(): Record<string, string> {
   return {
     Referer: "http://www.kuwo.cn/",
@@ -611,6 +864,24 @@ async function getBaiduTrack(id: string): Promise<{ meta: TrackMeta; playUrl: Pl
     },
     playUrl: { url: playUrl, br: link.rate || link.bitrate }
   }
+}
+
+async function getBaiduPlaylistItems(listId: string): Promise<QueueItem[]> {
+  const data = await requestQianqianApi("tracklist/info", { id: listId }).catch(() => null)
+  const list = data?.data?.trackList || data?.data?.tracks || data?.data?.songList || []
+  if (!Array.isArray(list)) return []
+  return list.map((song: any) => {
+    const id = song.TSID || song.tsid || song.songId || song.songid
+    return {
+      id: `baidu:${id}`,
+      sourceType: "baidu",
+      resourceId: String(id || ""),
+      title: cleanMetaText(song.title || song.songName || song.name) || "百度音乐",
+      artist: song.artistName || song.author || song.artist || "",
+      imageUrl: song.pic || song.picRadio || "",
+      linkUrl: id ? `https://music.91q.com/song/${id}` : ""
+    }
+  }).filter((item: QueueItem) => item.resourceId)
 }
 
 async function getQianqianTsid(songId: string): Promise<string> {
@@ -673,6 +944,16 @@ function sourceName(platform: MusicPlatform): string {
     baidu: "百度音乐"
   }
   return names[platform]
+}
+
+function sourceNameFromString(sourceType: string): string {
+  if (isMusicPlatform(sourceType)) return sourceName(sourceType)
+  if (sourceType === "local_upload") return "本地歌曲"
+  return sourceType || "音频"
+}
+
+function isMusicPlatform(sourceType: string): sourceType is MusicPlatform {
+  return ["netease", "tencent", "kugou", "kuwo", "baidu"].includes(sourceType)
 }
 
 function mergeTrackMeta(primary: TrackMeta, fallback: TrackMeta): TrackMeta {

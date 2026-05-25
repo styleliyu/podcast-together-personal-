@@ -33,7 +33,7 @@ function check(
     hasCccee.value = true
     cui.showModal({
       title: "哇！",
-      content: "cee 和 yenche 又来一起听播客了耶🥳",
+      content: "cee 和 yenche 又来一起听了耶🥳",
       confirmText: "太好了",
       showCancel: false,
       priority: 100

@@ -98,7 +98,7 @@ const _setWeChat = (wxShare: WxShare) => {
   if(!hasConfigWxJsSDK) return
   let { 
     frdTitle, 
-    frdDesc = "邀请你一起听播客",
+    frdDesc = "邀请你一起听",
     frdImgUrl = images.APP_LOGO_COS,
     pyqTitle,
     pyqImgUrl = images.APP_LOGO_COS,
@@ -131,8 +131,8 @@ const _setWeChat = (wxShare: WxShare) => {
 }
 
 const _reset = () => {
-  let title = "一起听播客"
-  let desc = "跟你的好友一起实时听播客！"
+  let title = "一起听"
+  let desc = "和朋友实时同步听音乐、播客和本地音频。"
   let iconUrl = images.FAVI_ICON
   _setBasic(title, desc, iconUrl, "all")
   _setWeChat({ frdTitle: title, pyqTitle: title })

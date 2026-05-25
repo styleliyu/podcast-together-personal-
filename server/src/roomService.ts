@@ -30,6 +30,7 @@ interface CreateBody {
   roomData: ContentData
   nickName?: string
   "x-pt-local-id": string
+  isPersistent?: boolean
 }
 
 export async function handleRoomOperate(ctx: RequestContext): Promise<RequestRes<RoRes>> {
@@ -156,7 +157,7 @@ async function handleCreate(
 
   const now = Date.now()
   const room: Omit<Room, "_id"> = {
-    content: body.roomData,
+    content: stripQueueFromContent(body.roomData),
     oState: "OK",
     playStatus: "PAUSED",
     speedRate: "1",
@@ -166,34 +167,45 @@ async function handleCreate(
     createStamp: now,
     owner: clientId,
     participants: [],
-    config: defaultRoomCfg
+    config: defaultRoomCfg,
+    queue: body.roomData.queue,
+    isPersistent: Boolean(body.isPersistent)
   }
   const roomId = roomRepo.add(room)
   return {
     code: "0000",
     data: {
       roomId,
-      content: body.roomData,
+      content: room.content,
       playStatus: "PAUSED",
       speedRate: "1",
       operator: "",
       contentStamp: 0,
       operateStamp: now,
       participants: [],
-      everyoneCanOperatePlayer: defaultRoomCfg.everyoneCanOperatePlayer
+      everyoneCanOperatePlayer: defaultRoomCfg.everyoneCanOperatePlayer,
+      queue: room.queue,
+      currentIndex: room.queue?.currentIndex,
+      playMode: room.queue?.playMode,
+      isPersistent: room.isPersistent
     }
   }
 }
 
 async function checkMyRoomAndDelete(clientId: string): Promise<boolean> {
   let room = roomRepo.findActiveByOwner(clientId)
-  if (room) {
+  if (room && !room.isPersistent) {
     room = pausePlayer(room)
     room.oState = "DELETED"
     room.participants = []
     roomRepo.update(room._id, room)
   }
   return true
+}
+
+function stripQueueFromContent(content: ContentData): ContentData {
+  const { queue, ...rest } = content
+  return rest
 }
 
 export function pausePlayer(room: Room, operator = ""): Room {
@@ -238,7 +250,11 @@ export function toRoRes(room: Room, guestId?: string, iamOwner?: "Y" | "N"): RoR
     participants,
     guestId,
     iamOwner,
-    everyoneCanOperatePlayer: config.everyoneCanOperatePlayer
+    everyoneCanOperatePlayer: config.everyoneCanOperatePlayer,
+    queue: room.queue,
+    currentIndex: room.queue?.currentIndex,
+    playMode: room.queue?.playMode,
+    isPersistent: room.isPersistent
   }
 }
 
