@@ -3,16 +3,10 @@ import crypto from "crypto"
 import fs from "fs"
 import path from "path"
 import type { ContentData, QueueItem, RequestRes, RoomQueue } from "../types"
+import { parseMusicResourceWithAdapters } from "./adapters"
+import type { MusicPlatform, MusicResource, MusicResourceKind } from "./adapters"
 
-export type MusicPlatform = "netease" | "tencent" | "kugou" | "kuwo" | "baidu"
-export type MusicResourceKind = "track" | "playlist" | "album"
-
-interface MusicResource {
-  platform: MusicPlatform
-  kind: MusicResourceKind
-  id: string
-  linkUrl: string
-}
+export type { MusicPlatform, MusicResourceKind }
 
 interface TrackMeta {
   title?: string
@@ -166,23 +160,7 @@ async function resolvePlaylistItems(resource: MusicResource): Promise<QueueItem[
 }
 
 function parseMusicResource(link: string): MusicResource | null {
-  let url: URL
-  try {
-    url = new URL(link)
-  } catch {
-    return null
-  }
-
-  const host = url.hostname.toLowerCase()
-  if (isBilibiliHost(host) || isXiamiHost(host)) return null
-
-  if (isNeteaseHost(host)) return parseNetease(url, link)
-  if (isTencentHost(host)) return parseTencent(url, link)
-  if (isKugouHost(host)) return parseKugou(url, link)
-  if (isKuwoHost(host)) return parseKuwo(url, link)
-  if (isBaiduHost(host)) return parseBaidu(url, link)
-
-  return null
+  return parseMusicResourceWithAdapters(link)
 }
 
 function isNeteaseHost(host: string): boolean {

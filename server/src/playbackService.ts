@@ -1,0 +1,50 @@
+import type { ReqOperatePlayer, Room, RoomConfig, RoomStatus } from "./types"
+
+export const MIN_DURATION_FOR_A_PERSON = 250
+
+export function canOperatePlayer(room: Room, clientId: string, defaultRoomCfg: RoomConfig): boolean {
+  const roomCfg = room.config || defaultRoomCfg
+  const isOwner = room.owner === clientId
+  return isOwner || roomCfg.everyoneCanOperatePlayer !== "N"
+}
+
+export function shouldIgnoreRapidSameOperator(room: Room, guestId: string, operateStamp: number): boolean {
+  return guestId === room.operator && operateStamp - room.operateStamp < MIN_DURATION_FOR_A_PERSON
+}
+
+export function buildPlaybackUpdate(input: {
+  room: Room
+  roomId: string
+  req: ReqOperatePlayer
+  guestId: string
+  isOwner: boolean
+  defaultRoomCfg: RoomConfig
+}): { patch: Partial<Room>; roomStatus: RoomStatus } {
+  const { room, roomId, req, guestId, isOwner, defaultRoomCfg } = input
+  const roomCfg = room.config || defaultRoomCfg
+  const newRoomCfg = { ...roomCfg }
+  const patch: Partial<Room> = {
+    playStatus: req.playStatus,
+    speedRate: req.speedRate,
+    contentStamp: req.contentStamp,
+    operateStamp: req["x-pt-stamp"],
+    operator: guestId
+  }
+
+  const roomStatus: RoomStatus = {
+    roomId,
+    playStatus: req.playStatus,
+    speedRate: req.speedRate,
+    contentStamp: req.contentStamp,
+    operateStamp: req["x-pt-stamp"],
+    operator: guestId
+  }
+
+  if (req.everyoneCanOperatePlayer && isOwner) {
+    newRoomCfg.everyoneCanOperatePlayer = req.everyoneCanOperatePlayer
+    patch.config = newRoomCfg
+    roomStatus.everyoneCanOperatePlayer = req.everyoneCanOperatePlayer
+  }
+
+  return { patch, roomStatus }
+}
