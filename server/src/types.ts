@@ -28,6 +28,7 @@ export interface ContentData {
   seriesName?: string
   seriesUrl?: string
   queue?: RoomQueue
+  pendingPlaylistImport?: PendingPlaylistImport
 }
 
 export interface Participant {
@@ -65,6 +66,23 @@ export interface RoomQueue {
   items: QueueItem[]
   currentIndex: number
   playMode: PlayMode
+}
+
+export interface PendingPlaylistImport {
+  link: string
+  items: QueueItem[]
+  importedItemIds?: string[]
+}
+
+export interface PlaylistImportProgress {
+  status: "started" | "progress" | "completed" | "failed"
+  roomId: string
+  link: string
+  total: number
+  successCount: number
+  failedCount: number
+  addedCount: number
+  message: string
 }
 
 export interface RoomConfig {
@@ -135,12 +153,13 @@ export interface RoomStatus {
 }
 
 export interface ResToFe {
-  responseType: "CONNECTED" | "NEW_STATUS" | "HEARTBEAT"
+  responseType: "CONNECTED" | "NEW_STATUS" | "HEARTBEAT" | "PLAYLIST_IMPORT_PROGRESS"
   roomStatus?: RoomStatus
+  playlistImportProgress?: PlaylistImportProgress
 }
 
 export interface ReqBase {
-  operateType: "FIRST_SEND" | "SET_PLAYER" | "HEARTBEAT" | "SET_QUEUE_INDEX" | "ADVANCE_QUEUE" | "SET_PLAY_MODE" | "APPEND_QUEUE"
+  operateType: "FIRST_SEND" | "SET_PLAYER" | "HEARTBEAT" | "SET_QUEUE_INDEX" | "ADVANCE_QUEUE" | "SET_PLAY_MODE" | "APPEND_QUEUE" | "IMPORT_PLAYLIST"
   roomId: string
   "x-pt-local-id": string
   "x-pt-stamp": number
@@ -173,6 +192,11 @@ export interface ReqSetPlayMode extends ReqBase {
 export interface ReqAppendQueue extends ReqBase {
   operateType: "APPEND_QUEUE"
   items: QueueItem[]
+}
+
+export interface ReqImportPlaylist extends ReqBase {
+  operateType: "IMPORT_PLAYLIST"
+  link: string
 }
 
 export interface RequestContext {

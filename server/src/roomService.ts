@@ -10,6 +10,7 @@ import type {
   Visitor
 } from "./types"
 import { roomRepo, visitorRepo } from "./db"
+import { startPlaylistImport } from "./playlistImport"
 
 const MAX_ROOM_NUM = 15
 const defaultRoomCfg: RoomConfig = {
@@ -172,6 +173,14 @@ async function handleCreate(
     isPersistent: Boolean(body.isPersistent)
   }
   const roomId = roomRepo.add(room)
+  if (body.roomData.pendingPlaylistImport) {
+    startPlaylistImport({
+      roomId,
+      link: body.roomData.pendingPlaylistImport.link,
+      items: body.roomData.pendingPlaylistImport.items,
+      importedItemIds: body.roomData.pendingPlaylistImport.importedItemIds
+    })
+  }
   return {
     code: "0000",
     data: {
@@ -204,7 +213,7 @@ async function checkMyRoomAndDelete(clientId: string): Promise<boolean> {
 }
 
 function stripQueueFromContent(content: ContentData): ContentData {
-  const { queue, ...rest } = content
+  const { queue, pendingPlaylistImport, ...rest } = content
   return rest
 }
 

@@ -1,59 +1,83 @@
 # 一起听
 
-一个自部署 Web 应用，用来和朋友实时同步听音乐、播客和本地音频。项目基于 `podcast-together` 改造，后端已迁移为普通 Node.js 服务，适合部署到自己的服务器。
+一个适合个人自部署的实时同步听歌 Web 应用。项目基于原版 `podcast-together` 改造，后端已从 Laf 云函数迁移为普通云服务器可运行的 Node.js 服务，支持和朋友在同一个房间里同步播放音乐、播客和本地音频。
 
-已部署的公开访问地址：[https://podcast.still-fantasy.com/](https://podcast.still-fantasy.com/)
+- 线上示例：[https://podcast.still-fantasy.com/](https://podcast.still-fantasy.com/)
+- 当前仓库：[styleliyu/podcast-together-personal-](https://github.com/styleliyu/podcast-together-personal-.git)
+- 原项目：[yenche123/podcast-together](https://github.com/yenche123/podcast-together)
 
-## 功能
+## 功能概览
 
-- 创建房间后，把房间链接发给朋友即可一起听。
-- 同步播放、暂停、进度、倍速。
-- 房主可限制其他成员操作播放器。
-- 支持播客链接、公开音频直链、喜马拉雅开放平台、音乐平台单曲和歌单链接。
-- 支持房间队列、上一首、下一首、顺序播放、随机播放、单曲循环。
-- 支持上传本地 `mp3`、`m4a`、`aac` 文件到服务器后同步播放。
+- 创建房间后分享链接，房间成员可实时同步播放、暂停、进度、倍速和切歌。
+- 支持房主限制其他成员操作播放器。
+- 支持房间播放队列、上一首、下一首、顺序播放、随机播放、单曲循环。
+- 支持在房间内继续添加单曲或歌单。
+- 支持本地 `mp3`、`m4a`、`aac` 文件上传到服务器后同步播放。
 - 支持常驻房间，适合固定入口长期使用。
+- 支持大歌单渐进式导入：先创建房间并加入前几首可播放歌曲，后台再低频解析剩余歌曲，成功一首追加一首到队列。
 
-## 支持链接
+## 技术架构
+
+- 前端：Vue 3 + Vite + TypeScript，源码在 `src/`。
+- 后端：Node.js + Express + ws，源码在 `server/src/`。
+- 数据库：SQLite，运行时数据默认存放在 `server/data/`。
+- 播放同步：HTTP 负责创建/进入房间，WebSocket 负责播放状态、队列、切歌和导入进度同步。
+- 音乐解析：主要集中在 `server/src/music/musicAdapter.ts`。
+- 房间状态：通过 `server/src/roomService.ts` 和 `server/src/websocket.ts` 操作并持久化。
+
+## 支持的链接
 
 当前支持：
 
 - 播客链接：小宇宙、Apple Podcasts 中国区、常见播客网页。
-- 音频直链：公网可访问的 `.mp3`、`.m4a`、`.aac` 链接。
+- 音频直链：公网可访问的 `.mp3`、`.m4a`、`.aac`。
 - 喜马拉雅：需要后端配置开放平台应用。
 - 音乐平台单曲和歌单：网易云音乐、QQ 音乐、酷狗音乐、酷我音乐、百度/千千音乐。
 
 暂不支持：
 
-- 专辑、歌手页直接创建房间。
+- 专辑页、歌手页直接创建房间。
 - Bilibili、虾米。
-- 平台没有返回播放地址的内容。会员、版权、下架、地区限制歌曲需要平台接口实际给出可播放地址。
+- 平台没有返回播放地址的内容。会员、版权、下架、地区限制歌曲需要平台接口实际返回可播放地址。
 
 ## 复制音乐链接
 
 原则：打开歌曲或歌单详情页，直接复制浏览器地址栏里的前端页面链接。不要复制搜索页、歌手页、专辑页或临时跳转链接。
 
-常见形式：
+常见格式：
 
-- 网易云音乐单曲：`https://music.163.com/#/song?id=3381828899`
-- 网易云音乐歌单：`https://music.163.com/#/playlist?id=...`
-- QQ 音乐单曲：`https://y.qq.com/n/ryqq/songDetail/003mAan70zUy5O`
-- QQ 音乐歌单：`https://y.qq.com/n/ryqq/playlist/...`
-- 酷狗音乐单曲：`https://www.kugou.com/mixsong/12f54x43.html?...` 或 `https://www.kugou.com/song/#hash=...`
-- 酷狗音乐歌单：`https://www.kugou.com/yy/special/single/...`
-- 酷我音乐单曲：`https://www.kuwo.cn/play_detail/263288`
-- 酷我音乐歌单：`https://www.kuwo.cn/playlist_detail/...`
-- 百度/千千音乐：`https://music.91q.com/song/...` 或 `https://music.taihe.com/song/...`
+```text
+网易云音乐单曲：https://music.163.com/#/song?id=3381828899
+网易云音乐歌单：https://music.163.com/#/playlist?id=...
+QQ 音乐单曲：https://y.qq.com/n/ryqq/songDetail/003mAan70zUy5O
+QQ 音乐歌单：https://y.qq.com/n/ryqq/playlist/...
+酷狗音乐单曲：https://www.kugou.com/mixsong/12f54x43.html 或 https://www.kugou.com/song/#hash=...
+酷狗音乐歌单：https://www.kugou.com/yy/special/single/...
+酷我音乐单曲：https://www.kuwo.cn/play_detail/263288
+酷我音乐歌单：https://www.kuwo.cn/playlist_detail/...
+百度/千千音乐：https://music.91q.com/song/... 或 https://music.taihe.com/song/...
+```
 
-QQ 音乐播放地址解析已吸收 `copws/qq-music-api` 的新版请求方式：原逻辑失败后会使用 `https://u.y.qq.com/cgi-bin/musicu.fcg` 的 POST 方式兜底。需要会员授权的内容可以在后端配置 `QQ_MUSIC_COOKIE`，但最终仍取决于 QQ 音乐接口是否给当前账号返回播放地址。
+QQ 音乐播放地址解析已吸收 `copws/qq-music-api` 的新版请求方式：原逻辑失败后会使用 `https://u.y.qq.com/cgi-bin/musicu.fcg` 的 POST 方式兜底。需要账号授权的内容可以配置 QQ 音乐 Cookie，但最终仍取决于 QQ 音乐接口是否给当前账号返回播放地址。
 
-## 歌单、本地歌曲与常驻房间
+## 歌单和队列
 
-- 粘贴歌单链接创建房间时，会导入平台返回的完整曲目列表，不做人为数量限制。
-- 创建房间时只解析第一首可播放歌曲；切歌时再按需解析目标歌曲播放地址，避免一次性请求大量播放地址。
-- 房间创建后仍可继续添加单曲或歌单链接到当前队列。
-- 本地歌曲会上传到后端 `server/data/uploads/`，并通过 `/uploads/...` 提供播放。
-- 常驻房间不会因为同一用户创建新房间而被自动替换。房间没人时仍会暂停播放并清空在线成员。
+- 粘贴歌单链接创建房间时，后端会先解析前几首可播放歌曲并立即创建房间。
+- 剩余歌曲由后台渐进式导入，间隔低频请求平台接口，避免一次性打满外部服务。
+- 后台导入只会把已经拿到 `audioUrl` 的歌曲追加到播放队列。
+- 解析失败的歌曲会跳过，不会阻塞整张歌单。
+- 队列追加和导入进度通过 WebSocket 同步给房间内所有用户。
+- 切到尚未解析出播放地址的队列项时，后端会进行懒解析，并带有同房间频率限制和失败冷却。
+
+## 请求保护和缓存
+
+- `/api/parse-text`：单 IP 3 次 / 10 秒。
+- `/api/parse-text`：全局 10 次 / 10 秒。
+- 切歌懒解析：同房间 1 次 / 2 秒。
+- 播放地址解析失败冷却：30 秒。
+- 播放地址成功缓存：30 分钟。
+
+这些限制是为了让个人服务器更稳定，也降低音乐平台接口被高频请求的风险。当前没有实现代理池、多 Cookie 轮换或动态 IP。
 
 ## 本地开发
 
@@ -98,6 +122,7 @@ ROOM_CLOCK_INTERVAL_MS=30000
 
 # 可选：QQ 音乐登录 Cookie，用于需要账号授权的播放地址解析。
 QQ_MUSIC_COOKIE=
+QQ_MUSIC_COOKIE_FILE=./data/qq-music-cookie.txt
 
 XIMALAYA_APP_KEY=
 XIMALAYA_APP_SECRET=
@@ -108,11 +133,30 @@ XIMALAYA_DEVICE_ID_TYPE=
 XIMALAYA_SIG_MODE=md5_secret_concat
 ```
 
-`QQ_MUSIC_COOKIE` 获取方式：在浏览器登录 QQ 音乐网页版，打开开发者工具，在 `y.qq.com` 或 `u.y.qq.com` 请求里复制 `Cookie` 请求头。该值只放在自己的服务器环境变量里，不要提交到仓库。
+QQ 音乐 Cookie 获取方式：在浏览器登录 QQ 音乐网页版，打开开发者工具，在 `y.qq.com` 或 `u.y.qq.com` 请求里复制 `Cookie` 请求头。该值只应放在自己的服务器环境变量或运行时 Cookie 文件里，不要提交到仓库。
+
+如果想运行时更换 QQ Cookie，不需要重启服务。把 Cookie 写入 `QQ_MUSIC_COOKIE_FILE` 指向的文件即可，默认是 `server/data/qq-music-cookie.txt`。后端每次请求 QQ 音乐接口前都会重新读取该文件；文件为空或不存在时，才会回退到 `.env` 里的 `QQ_MUSIC_COOKIE`。
+
+## 构建
+
+后端：
+
+```bash
+cd server
+npm run build
+```
+
+前端：
+
+```bash
+npm run build
+```
+
+前端构建可能仍会出现旧警告，例如 vconsole eval、Browserslist outdated、联系页图片变量运行时解析提示。这些警告不影响当前构建产物生成。
 
 ## 部署
 
-完整部署步骤见 [DEPLOY_SERVER.md](./DEPLOY_SERVER.md)。
+完整部署流程见 [DEPLOY_SERVER.md](./DEPLOY_SERVER.md)。
 
 常规流程：
 
@@ -134,13 +178,32 @@ Nginx 站点根目录指向前端 `dist`，并把 `/api/` 和 `/ws` 反向代理
 client_max_body_size 1024m;
 ```
 
+## 不要提交的内容
+
+不要提交以下文件或目录：
+
+- `.env`
+- `.env.local`
+- `server/.env`
+- QQ 音乐 Cookie
+- `server/data/`
+- `node_modules/`
+- `dist/`
+- `server/dist/`
+
+## 后续计划
+
+- 实机测试 QQ、网易云、酷狗、酷我大歌单渐进导入效果。
+- 双浏览器测试队列追加同步。
+- 服务器部署更新。
+- 可选：增加导入任务取消、导入进度面板、失败歌曲详情。
+
 ## 参考与致谢
 
-- 我的 GitHub：[styleliyu](https://github.com/styleliyu)
-- QQ 音乐 API 参考：[copws/qq-music-api](https://github.com/copws/qq-music-api)
-- 多平台音乐 API 参考：[listen1/listen1_desktop](https://github.com/listen1/listen1_desktop)
-- Meting 参考：[metowolf/Meting](https://github.com/metowolf/Meting)
-- 原项目：[yenche123/podcast-together](https://github.com/yenche123/podcast-together)
+- [copws/qq-music-api](https://github.com/copws/qq-music-api)
+- [listen1/listen1_desktop](https://github.com/listen1/listen1_desktop)
+- [metowolf/Meting](https://github.com/metowolf/Meting)
+- [yenche123/podcast-together](https://github.com/yenche123/podcast-together)
 
 ## 许可
 

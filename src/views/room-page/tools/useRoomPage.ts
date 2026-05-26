@@ -45,7 +45,8 @@ const pageData: PageData = reactive({
   showMoreBox: false,   // 是否要展示 “展开更多” 的按钮
   amIOwner: false,
   everyoneCanOperatePlayer: "Y",
-  queue: undefined
+  queue: undefined,
+  playlistImportMessage: ""
 })
 
 // 其他杂七杂八的数据
@@ -199,6 +200,11 @@ const onAppendQueueByLink = async () => {
     "x-pt-stamp": time.getTime(),
     items
   })
+
+  if(res.data.pendingPlaylistImport?.link) {
+    pageData.playlistImportMessage = `已加入 ${items.length} 首，剩余歌曲后台加载中`
+    sendImportPlaylist(res.data.pendingPlaylistImport.link)
+  }
 }
 
 export const useRoomPage = () => {
@@ -414,6 +420,16 @@ function sendAdvanceQueue(direction: "next" | "prev" | "auto") {
     "x-pt-stamp": time.getTime(),
     direction,
     fromIndex: pageData.queue.currentIndex
+  })
+}
+
+function sendImportPlaylist(link: string) {
+  sendToWebSocket(ws, {
+    operateType: "IMPORT_PLAYLIST",
+    roomId: pageData.roomId,
+    "x-pt-local-id": localId,
+    "x-pt-stamp": time.getTime(),
+    link
   })
 }
 
@@ -686,6 +702,18 @@ function connectWebSocket() {
         pageData.everyoneCanOperatePlayer = roomStatus.everyoneCanOperatePlayer
       }
       receiveNewStatus()
+    }
+    else if(rT === "PLAYLIST_IMPORT_PROGRESS" && msgRes.playlistImportProgress) {
+      const progress = msgRes.playlistImportProgress
+      if(progress.roomId !== pageData.roomId) return
+      pageData.playlistImportMessage = progress.message
+      if(progress.status === "failed") {
+        cui.showModal({
+          title: "导入失败",
+          content: progress.message,
+          showCancel: false
+        })
+      }
     }
     else if(rT === "HEARTBEAT") {
       console.log("收到 ws 的HEARTBEAT.......")

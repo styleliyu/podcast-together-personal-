@@ -37,6 +37,7 @@ export interface ContentData {
   seriesName?: string   // 播客专栏名称，比如 "商业就是这样"
   seriesUrl?: string    // 播客专栏链接
   queue?: RoomQueue
+  pendingPlaylistImport?: PendingPlaylistImport
 }
 
 export type PlayMode = "sequence" | "shuffle" | "single"
@@ -56,6 +57,23 @@ export interface RoomQueue {
   items: QueueItem[]
   currentIndex: number
   playMode: PlayMode
+}
+
+export interface PendingPlaylistImport {
+  link: string
+  items: QueueItem[]
+  importedItemIds?: string[]
+}
+
+export interface PlaylistImportProgress {
+  status: "started" | "progress" | "completed" | "failed"
+  roomId: string
+  link: string
+  total: number
+  successCount: number
+  failedCount: number
+  addedCount: number
+  message: string
 }
 
 export interface RoRes {

@@ -9,10 +9,18 @@ type CheerioAPI = ReturnType<typeof cheerio.load>
 const MAX_FETCH_MILLI = 4000
 const WX_AUDIO_URL = "https://res.wx.qq.com/voice/getvoice?mediaid="
 const XIMALAYA_API_ORIGIN = "https://api.ximalaya.com"
+const PARSE_LIMIT_WINDOW_MS = 10 * 1000
+const PARSE_LIMIT_PER_IP = 3
+const PARSE_LIMIT_GLOBAL = 10
+
+const parseTextIpHits = new Map<string, number[]>()
+let parseTextGlobalHits: number[] = []
 
 export async function handleParseText(ctx: RequestContext): Promise<RequestRes<ContentData>> {
   const err = checkEntry(ctx)
   if (err) return err
+  const limitErr = checkParseTextRateLimit(ctx)
+  if (limitErr) return limitErr
 
   const link = ctx.body.link as string
   if (judgeIsCdnLink(link)) {
@@ -40,6 +48,37 @@ export async function handleParseText(ctx: RequestContext): Promise<RequestRes<C
   const html = await fetchLink(link)
   if (!html) return { code: "E4004" }
   return parseHtml(html, link)
+}
+
+function checkParseTextRateLimit(ctx: RequestContext): RequestRes<ContentData> | null {
+  const now = Date.now()
+  parseTextGlobalHits = pruneHits(parseTextGlobalHits, now)
+  if (parseTextGlobalHits.length >= PARSE_LIMIT_GLOBAL) {
+    return { code: "E4290", showMsg: "操作太频繁，请稍后再试。" }
+  }
+
+  const ip = getClientIp(ctx)
+  const ipHits = pruneHits(parseTextIpHits.get(ip) || [], now)
+  if (ipHits.length >= PARSE_LIMIT_PER_IP) {
+    parseTextIpHits.set(ip, ipHits)
+    return { code: "E4290", showMsg: "操作太频繁，请稍后再试。" }
+  }
+
+  ipHits.push(now)
+  parseTextGlobalHits.push(now)
+  parseTextIpHits.set(ip, ipHits)
+  return null
+}
+
+function pruneHits(hits: number[], now: number): number[] {
+  return hits.filter(stamp => now - stamp < PARSE_LIMIT_WINDOW_MS)
+}
+
+function getClientIp(ctx: RequestContext): string {
+  const forwarded = ctx.headers["x-forwarded-for"]
+  const realIp = ctx.headers["x-real-ip"]
+  const raw = Array.isArray(forwarded) ? forwarded[0] : forwarded || realIp || ctx.ip || "unknown"
+  return String(Array.isArray(raw) ? raw[0] : raw).split(",")[0].trim() || "unknown"
 }
 
 function judgeIsCdnLink(link: string): boolean {

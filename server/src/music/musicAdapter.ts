@@ -1,5 +1,7 @@
 import axios from "axios"
 import crypto from "crypto"
+import fs from "fs"
+import path from "path"
 import type { ContentData, QueueItem, RequestRes, RoomQueue } from "../types"
 
 export type MusicPlatform = "netease" | "tencent" | "kugou" | "kuwo" | "baidu"
@@ -26,6 +28,11 @@ interface PlayUrl {
 
 const MUSIC_TIMEOUT_MS = 8000
 const KUGOU_HASH_RE = /^[A-Fa-f0-9]{16,64}$/
+const DEFAULT_QQ_COOKIE_FILE = "./data/qq-music-cookie.txt"
+const PLAY_URL_CACHE_MS = 30 * 60 * 1000
+const PLAY_URL_FAIL_COOLDOWN_MS = 30 * 1000
+
+const playUrlCache = new Map<string, { expiresAt: number; content?: ContentData; failed?: boolean }>()
 
 const http = axios.create({
   timeout: MUSIC_TIMEOUT_MS,
@@ -49,7 +56,7 @@ export async function parseMusicLink(link: string): Promise<RequestRes<ContentDa
   }
 
   try {
-    const data = await resolveTrack(resource)
+    const data = await resolveTrackWithCache(resource)
     if (!data?.audioUrl) {
       return {
         code: "E4004",
@@ -80,13 +87,27 @@ export async function resolveQueueItemContent(item: QueueItem): Promise<ContentD
   }
 
   if (!isMusicPlatform(item.sourceType) || !item.resourceId) return null
-  const data = await resolveTrack({
+  const data = await resolveTrackWithCache({
     platform: item.sourceType,
     kind: "track",
     id: item.resourceId,
     linkUrl: item.linkUrl || ""
   })
   return data
+}
+
+export async function getPlaylistImportData(link: string): Promise<RequestRes<{ link: string; items: QueueItem[] }> | null> {
+  const resource = parseMusicResource(link)
+  if (!resource || resource.kind !== "playlist") return null
+
+  try {
+    const items = await resolvePlaylistItems(resource)
+    if (!items.length) return { code: "E4004", showMsg: "歌单为空或平台暂时没有返回曲目列表。" }
+    return { code: "0000", data: { link, items } }
+  } catch (err: any) {
+    console.error("playlist metadata parse failed", err?.code || err?.message || err)
+    return { code: "E4004", showMsg: "歌单解析失败，请更换链接或稍后再试。" }
+  }
 }
 
 async function parsePlaylist(resource: MusicResource): Promise<RequestRes<ContentData>> {
@@ -96,7 +117,7 @@ async function parsePlaylist(resource: MusicResource): Promise<RequestRes<Conten
       return { code: "E4004", showMsg: "歌单为空或平台暂时没有返回曲目列表。" }
     }
 
-    const playable = await resolvePlayableQueueItems(items)
+    const playable = await resolveInitialPlayableQueueItems(items, 3)
     if (!playable.length) return { code: "E4004", showMsg: "歌单中没有可播放的歌曲，请更换歌单或平台。" }
 
     const first = playable[0]
@@ -104,38 +125,35 @@ async function parsePlaylist(resource: MusicResource): Promise<RequestRes<Conten
     if (!content?.audioUrl) return { code: "E4004", showMsg: "歌单中没有可播放的歌曲，请更换歌单或平台。" }
 
     const queue: RoomQueue = { items: playable, currentIndex: 0, playMode: "sequence" }
-    return { code: "0000", data: { ...content, queue } }
+    return {
+      code: "0000",
+      data: {
+        ...content,
+        queue,
+        pendingPlaylistImport: {
+          link: resource.linkUrl,
+          items,
+          importedItemIds: playable.map(item => item.id)
+        }
+      }
+    }
   } catch (err: any) {
     console.error("playlist parse failed", err?.code || err?.message || err)
     return { code: "E4004", showMsg: "歌单解析失败，请更换链接或稍后再试。" }
   }
 }
 
-async function resolvePlayableQueueItems(items: QueueItem[]): Promise<QueueItem[]> {
+async function resolveInitialPlayableQueueItems(items: QueueItem[], maxCount: number): Promise<QueueItem[]> {
   const playable: QueueItem[] = []
-  const concurrency = 5
-  let nextIndex = 0
-
-  async function worker(): Promise<void> {
-    while (nextIndex < items.length) {
-      const item = items[nextIndex++]
-      try {
-        const content = await resolveQueueItemContent(item)
-        if (content?.audioUrl) playable.push({
-          ...item,
-          audioUrl: content.audioUrl,
-          title: item.title || content.title || sourceNameFromString(item.sourceType),
-          artist: item.artist || content.seriesName || "",
-          imageUrl: item.imageUrl || content.imageUrl || "",
-          linkUrl: item.linkUrl || content.linkUrl || ""
-        })
-      } catch {}
-    }
+  const candidates = items.slice(0, Math.max(maxCount, 10))
+  for (const item of candidates) {
+    if (playable.length >= maxCount) break
+    try {
+      const content = await resolveQueueItemContent(item)
+      if (content?.audioUrl) playable.push(toPlayableQueueItem(item, content))
+    } catch {}
   }
-
-  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, () => worker()))
-  const order = new Map(items.map((item, index) => [item.id, index]))
-  return playable.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
+  return playable
 }
 
 async function resolvePlaylistItems(resource: MusicResource): Promise<QueueItem[]> {
@@ -317,6 +335,27 @@ async function resolveTrack(resource: MusicResource): Promise<ContentData | null
   if (resource.platform === "kuwo") return resolveKuwoTrack(resource)
   if (resource.platform === "baidu") return resolveBaiduTrack(resource)
   return null
+}
+
+async function resolveTrackWithCache(resource: MusicResource): Promise<ContentData | null> {
+  const key = trackCacheKey(resource)
+  const cached = playUrlCache.get(key)
+  const now = Date.now()
+  if (cached && cached.expiresAt > now) return cached.failed ? null : cached.content || null
+  if (cached) playUrlCache.delete(key)
+
+  const content = await resolveTrack(resource)
+  if (content?.audioUrl) {
+    playUrlCache.set(key, { expiresAt: now + PLAY_URL_CACHE_MS, content })
+    return content
+  }
+
+  playUrlCache.set(key, { expiresAt: now + PLAY_URL_FAIL_COOLDOWN_MS, failed: true })
+  return null
+}
+
+function trackCacheKey(resource: MusicResource): string {
+  return `${resource.platform}:${resource.id || resource.linkUrl}`
 }
 
 async function resolveNeteaseTrack(resource: MusicResource): Promise<ContentData | null> {
@@ -569,8 +608,32 @@ function getTencentHeaders(extra: Record<string, string> = {}): Record<string, s
     "User-Agent": "Mozilla/5.0 podcast-together music resolver",
     ...extra
   }
-  if (process.env.QQ_MUSIC_COOKIE) headers.Cookie = process.env.QQ_MUSIC_COOKIE
+  const cookie = getTencentCookie()
+  if (cookie) headers.Cookie = cookie
   return headers
+}
+
+function getTencentCookie(): string {
+  const fileCookie = readTencentCookieFile()
+  if (fileCookie) return fileCookie
+  return (process.env.QQ_MUSIC_COOKIE || "").trim()
+}
+
+function readTencentCookieFile(): string {
+  const configuredPath = process.env.QQ_MUSIC_COOKIE_FILE || DEFAULT_QQ_COOKIE_FILE
+  const cookiePath = path.isAbsolute(configuredPath)
+    ? configuredPath
+    : path.resolve(process.cwd(), configuredPath)
+
+  try {
+    const raw = fs.readFileSync(cookiePath, "utf8").trim()
+    if (!raw) return ""
+    const envStyle = raw.match(/^QQ_MUSIC_COOKIE\s*=\s*([\s\S]*)$/)
+    return (envStyle?.[1] || raw).trim().replace(/^["']|["']$/g, "")
+  } catch (err: any) {
+    if (err?.code !== "ENOENT") console.warn("failed to read QQ music cookie file", err?.message || err)
+    return ""
+  }
 }
 
 async function resolveKugouTrack(resource: MusicResource): Promise<ContentData | null> {
@@ -959,6 +1022,17 @@ function toContent(resource: MusicResource, audioUrl: string, meta: TrackMeta): 
     imageUrl: meta.imageUrl || "",
     linkUrl: resource.linkUrl,
     seriesName: artist || sourceName(resource.platform)
+  }
+}
+
+export function toPlayableQueueItem(item: QueueItem, content: ContentData): QueueItem {
+  return {
+    ...item,
+    audioUrl: content.audioUrl,
+    title: item.title || content.title || sourceNameFromString(item.sourceType),
+    artist: item.artist || content.seriesName || "",
+    imageUrl: item.imageUrl || content.imageUrl || "",
+    linkUrl: item.linkUrl || content.linkUrl || ""
   }
 }
 

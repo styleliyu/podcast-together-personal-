@@ -100,6 +100,7 @@ const onTapShowMore = () => {
           <div>
             <h2>播放队列</h2>
             <p>{{ (pageData.queue.currentIndex || 0) + 1 }} / {{ pageData.queue.items.length }}</p>
+            <p v-if="pageData.playlistImportMessage" class="queue-import-message">{{ pageData.playlistImportMessage }}</p>
           </div>
           <div class="queue-actions">
             <button @click="onAppendQueueByLink">添加歌曲/歌单</button>
@@ -347,6 +348,10 @@ const onTapShowMore = () => {
       margin: 4px 0 0;
       color: var(--note-color);
       font-size: 13px;
+    }
+
+    .queue-import-message {
+      color: var(--desc-color);
     }
   }
 

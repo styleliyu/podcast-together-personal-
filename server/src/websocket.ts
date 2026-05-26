@@ -2,11 +2,13 @@ import type { Server as HttpServer } from "http"
 import WebSocket, { WebSocketServer } from "ws"
 import { roomRepo } from "./db"
 import { resolveQueueItemContent } from "./music/musicAdapter"
+import { importPlaylistByLink, setPlaylistImportBroadcaster } from "./playlistImport"
 import type {
   ContentData,
   PlayMode,
   QueueItem,
   ReqAppendQueue,
+  ReqImportPlaylist,
   PtWebSocket,
   ReqAdvanceQueue,
   ReqBase,
@@ -22,14 +24,19 @@ import type {
 } from "./types"
 
 const MIN_DURATION_FOR_A_PERSON = 250
+const LAZY_RESOLVE_ROOM_INTERVAL_MS = 2000
+const LAZY_RESOLVE_FAIL_COOLDOWN_MS = 30 * 1000
 const defaultRoomCfg: RoomConfig = {
   everyoneCanOperatePlayer: "Y"
 }
 
 const sockets = new Set<PtWebSocket>()
+const lazyResolveRoomStamps = new Map<string, number>()
+const lazyResolveFailCache = new Map<string, number>()
 
 export function setupWebSocket(server: HttpServer): WebSocketServer {
   const wss = new WebSocketServer({ noServer: true })
+  setPlaylistImportBroadcaster(broadcastToRoom)
 
   server.on("upgrade", (request, socket, head) => {
     const url = new URL(request.url || "", `http://${request.headers.host}`)
@@ -74,6 +81,7 @@ async function handleMessage(socket: PtWebSocket, data: unknown): Promise<void> 
   else if (req.operateType === "ADVANCE_QUEUE") await handleAdvanceQueue(socket, req as ReqAdvanceQueue)
   else if (req.operateType === "SET_PLAY_MODE") await handleSetPlayMode(socket, req as ReqSetPlayMode)
   else if (req.operateType === "APPEND_QUEUE") await handleAppendQueue(socket, req as ReqAppendQueue)
+  else if (req.operateType === "IMPORT_PLAYLIST") await handleImportPlaylist(socket, req as ReqImportPlaylist)
   else if (req.operateType === "HEARTBEAT") handleHeartbeat(socket, req)
 }
 
@@ -237,6 +245,19 @@ async function handleAppendQueue(socket: PtWebSocket, req: ReqAppendQueue): Prom
   })
 }
 
+async function handleImportPlaylist(socket: PtWebSocket, req: ReqImportPlaylist): Promise<void> {
+  const room = roomRepo.get(req.roomId)
+  if (!room || !canOperateQueue(room, req["x-pt-local-id"])) return
+  if (!getOperatorGuestId(req["x-pt-local-id"], room)) return
+  if (!/^https?:\/\//i.test(req.link || "")) return
+
+  const progress = await importPlaylistByLink(req.roomId, req.link)
+  send(socket, {
+    responseType: "PLAYLIST_IMPORT_PROGRESS",
+    playlistImportProgress: progress
+  })
+}
+
 async function pauseQueueAtEnd(roomId: string, room: Room, req: ReqAdvanceQueue): Promise<void> {
   const guestId = getOperatorGuestId(req["x-pt-local-id"], room)
   if (!guestId) return
@@ -274,8 +295,13 @@ async function switchQueueIndex(
   const guestId = getOperatorGuestId(clientId, room)
   if (!guestId) return
 
-  const content = await resolveQueueItemContent(room.queue.items[index])
-  if (!content?.audioUrl) return
+  const targetItem = room.queue.items[index]
+  if (!targetItem.audioUrl && !canLazyResolveQueueItem(roomId, targetItem)) return
+  const content = await resolveQueueItemContent(targetItem)
+  if (!content?.audioUrl) {
+    rememberLazyResolveFailure(targetItem)
+    return
+  }
   const queue: RoomQueue = {
     ...room.queue,
     currentIndex: index,
@@ -358,6 +384,27 @@ function contentToQueueItem(content: ContentData): QueueItem {
   }
 }
 
+function canLazyResolveQueueItem(roomId: string, item: QueueItem): boolean {
+  const now = Date.now()
+  const itemKey = queueItemResolveKey(item)
+  const failedAt = lazyResolveFailCache.get(itemKey)
+  if (failedAt && now - failedAt < LAZY_RESOLVE_FAIL_COOLDOWN_MS) return false
+  if (failedAt) lazyResolveFailCache.delete(itemKey)
+
+  const lastRoomResolve = lazyResolveRoomStamps.get(roomId) || 0
+  if (now - lastRoomResolve < LAZY_RESOLVE_ROOM_INTERVAL_MS) return false
+  lazyResolveRoomStamps.set(roomId, now)
+  return true
+}
+
+function rememberLazyResolveFailure(item: QueueItem): void {
+  lazyResolveFailCache.set(queueItemResolveKey(item), Date.now())
+}
+
+function queueItemResolveKey(item: QueueItem): string {
+  return `${item.sourceType}:${item.resourceId || item.linkUrl || item.id}`
+}
+
 function broadcastToRoom(roomId: string, data: ResToFe): void {
   for (const socket of sockets) {
     if (socket.roomId === roomId && socket.readyState === WebSocket.OPEN) send(socket, data)
@@ -368,10 +415,10 @@ function send(socket: PtWebSocket, data: ResToFe): void {
   socket.send(JSON.stringify(data))
 }
 
-function checkReqObject(data: ReqBase | ReqOperatePlayer | ReqSetQueueIndex | ReqAdvanceQueue | ReqSetPlayMode | ReqAppendQueue): boolean {
+function checkReqObject(data: ReqBase | ReqOperatePlayer | ReqSetQueueIndex | ReqAdvanceQueue | ReqSetPlayMode | ReqAppendQueue | ReqImportPlaylist): boolean {
   if (!data) return false
   if (!data.operateType || !data.roomId || !data["x-pt-local-id"] || !data["x-pt-stamp"]) return false
-  if (!["FIRST_SEND", "SET_PLAYER", "HEARTBEAT", "SET_QUEUE_INDEX", "ADVANCE_QUEUE", "SET_PLAY_MODE", "APPEND_QUEUE"].includes(data.operateType)) return false
+  if (!["FIRST_SEND", "SET_PLAYER", "HEARTBEAT", "SET_QUEUE_INDEX", "ADVANCE_QUEUE", "SET_PLAY_MODE", "APPEND_QUEUE", "IMPORT_PLAYLIST"].includes(data.operateType)) return false
 
   if (data.operateType === "SET_PLAYER") {
     const req = data as ReqOperatePlayer
@@ -400,6 +447,11 @@ function checkReqObject(data: ReqBase | ReqOperatePlayer | ReqSetQueueIndex | Re
   if (data.operateType === "APPEND_QUEUE") {
     const req = data as ReqAppendQueue
     if (!Array.isArray(req.items) || req.items.length < 1) return false
+  }
+
+  if (data.operateType === "IMPORT_PLAYLIST") {
+    const req = data as ReqImportPlaylist
+    if (typeof req.link !== "string" || !/^https?:\/\//i.test(req.link)) return false
   }
 
   return true

@@ -1,5 +1,5 @@
 // 仅用于 room-page 的类型
-import { ContentData, PlayMode, RoomQueue } from "./index"
+import { ContentData, PlayMode, PlaylistImportProgress, RoomQueue } from "./index"
 
 /**
  * 1: 正在进入房间...
@@ -36,6 +36,7 @@ export interface PageData {
   amIOwner: boolean,
   everyoneCanOperatePlayer: "Y" | "N"
   queue?: RoomQueue
+  playlistImportMessage?: string
 }
 
 type SpeedRate = "0.8" | "1" | "1.2" | "1.5" | "1.7"
@@ -57,9 +58,9 @@ export interface RoomStatus {
 }
 
 export interface WsMsgRes {
-  responseType: "CONNECTED" | "NEW_STATUS" | "HEARTBEAT"
+  responseType: "CONNECTED" | "NEW_STATUS" | "HEARTBEAT" | "PLAYLIST_IMPORT_PROGRESS"
   roomStatus?: RoomStatus
+  playlistImportProgress?: PlaylistImportProgress
 }
 
 export type RevokeType = "ws" | "http" | "check"
-
