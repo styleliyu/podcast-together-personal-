@@ -23,6 +23,7 @@ const {
   onQueueAdvance,
   onPlayModeChange,
   onAppendQueueByLink,
+  onCancelPlaylistImport,
 } = useRoomPage()
 const state = toRef(pageData, "state")
 const { 
@@ -56,6 +57,23 @@ const playModeText = computed(() => {
   if(mode === "shuffle") return "随机"
   if(mode === "single") return "单曲循环"
   return "顺序"
+})
+
+const playlistImportStatusText = computed(() => {
+  const status = pageData.playlistImportProgress?.status
+  if(status === "completed") return "已完成"
+  if(status === "cancelled") return "已取消"
+  if(status === "failed") return "导入失败"
+  return "正在导入"
+})
+
+const showPlaylistImportPanel = computed(() => {
+  return Boolean(pageData.playlistImportProgress || pageData.playlistImportMessage)
+})
+
+const canCancelPlaylistImport = computed(() => {
+  const status = pageData.playlistImportProgress?.status
+  return status === "started" || status === "progress"
 })
 
 const onTapShowMore = () => {
@@ -107,6 +125,25 @@ const onTapShowMore = () => {
             <button @click="onQueueAdvance('prev')">上一首</button>
             <button @click="onQueueAdvance('next')">下一首</button>
             <button @click="onPlayModeChange">{{ playModeText }}</button>
+          </div>
+        </div>
+        <div v-if="showPlaylistImportPanel" class="playlist-import-panel">
+          <div class="playlist-import-panel__head">
+            <div>
+              <h3>歌单导入</h3>
+              <p>{{ pageData.playlistImportMessage }}</p>
+            </div>
+            <button
+              v-if="canCancelPlaylistImport"
+              :disabled="pageData.cancellingPlaylistImport"
+              @click="onCancelPlaylistImport"
+            >{{ pageData.cancellingPlaylistImport ? '取消中...' : '取消导入' }}</button>
+          </div>
+          <div class="playlist-import-panel__grid">
+            <span>状态：{{ playlistImportStatusText }}</span>
+            <span>已加入：{{ pageData.playlistImportProgress?.addedCount || 0 }} 首</span>
+            <span>已解析：{{ pageData.playlistImportProgress?.parsedCount || 0 }} / {{ pageData.playlistImportProgress?.total || 0 }}</span>
+            <span>失败：{{ pageData.playlistImportProgress?.failedCount || 0 }} 首</span>
           </div>
         </div>
         <div class="queue-list">
@@ -371,6 +408,60 @@ const onTapShowMore = () => {
       cursor: pointer;
       font-size: 13px;
     }
+  }
+
+  .playlist-import-panel {
+    margin-top: 14px;
+    padding: 14px;
+    border-radius: 8px;
+    background: var(--card-color);
+
+    h3 {
+      margin: 0;
+      color: var(--text-color);
+      font-size: 15px;
+      line-height: 22px;
+    }
+
+    p {
+      margin: 3px 0 0;
+      color: var(--desc-color);
+      font-size: 13px;
+      line-height: 20px;
+    }
+
+    button {
+      border: 0;
+      border-radius: 6px;
+      background: var(--other-btn-bg);
+      color: var(--other-btn-text);
+      height: 32px;
+      padding: 0 12px;
+      cursor: pointer;
+      font-size: 13px;
+
+      &:disabled {
+        cursor: default;
+        opacity: .6;
+      }
+    }
+  }
+
+  .playlist-import-panel__head {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: flex-start;
+  }
+
+  .playlist-import-panel__grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 12px;
+    margin-top: 12px;
+    color: var(--note-color);
+    font-size: 13px;
+    line-height: 20px;
   }
 
   .queue-list {

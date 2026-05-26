@@ -8,6 +8,7 @@ import { startRoomClock } from "./clock"
 import { setupWebSocket } from "./websocket"
 import { dbPath } from "./db"
 import { getUploadRoot, handleUploadAudio, handleUploadError, uploadMiddleware } from "./upload"
+import { cancelPlaylistImport } from "./playlistImport"
 
 const app = express()
 const port = Number(process.env.PORT || 3001)
@@ -47,6 +48,21 @@ app.post("/api/parse-text", async (req, res) => {
 
 app.post("/api/upload-audio", uploadMiddleware, handleUploadAudio)
 app.use(handleUploadError)
+
+app.post("/api/playlist-import/cancel", (req, res) => {
+  const roomId = typeof req.body?.roomId === "string" ? req.body.roomId : ""
+  if (!roomId) {
+    res.json({ code: "E4000", message: "缺少 roomId" })
+    return
+  }
+
+  const result = cancelPlaylistImport(roomId)
+  res.json({
+    code: result.code,
+    message: result.showMsg || result.errMsg || "已取消导入任务",
+    data: result.data
+  })
+})
 
 app.post("/api/room-operate", async (req, res) => {
   const result = await handleRoomOperate({

@@ -2,7 +2,7 @@ import type { Server as HttpServer } from "http"
 import WebSocket, { WebSocketServer } from "ws"
 import { roomRepo } from "./db"
 import { resolveQueueItemContent } from "./music/musicAdapter"
-import { importPlaylistByLink, setPlaylistImportBroadcaster } from "./playlistImport"
+import { getPlaylistImportProgress, importPlaylistByLink, setPlaylistImportBroadcaster } from "./playlistImport"
 import type {
   ContentData,
   PlayMode,
@@ -119,6 +119,13 @@ async function handleFirstSend(socket: PtWebSocket, req: ReqBase): Promise<void>
       playMode: room.queue?.playMode
     }
   })
+  const progress = getPlaylistImportProgress(req.roomId)
+  if (progress) {
+    send(socket, {
+      responseType: "PLAYLIST_IMPORT_PROGRESS",
+      playlistImportProgress: progress
+    })
+  }
 }
 
 async function handleSetPlayer(socket: PtWebSocket, req: ReqOperatePlayer): Promise<void> {

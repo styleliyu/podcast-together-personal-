@@ -1,6 +1,6 @@
 import { roomRepo } from "./db"
 import { getPlaylistImportData, resolveQueueItemContent, toPlayableQueueItem } from "./music/musicAdapter"
-import type { ContentData, PlaylistImportProgress, QueueItem, ResToFe, Room, RoomQueue } from "./types"
+import type { ContentData, PlaylistImportProgress, QueueItem, RequestRes, ResToFe, Room, RoomQueue } from "./types"
 
 const IMPORT_DELAY_MIN_MS = 800
 const IMPORT_DELAY_MAX_MS = 1500
@@ -9,10 +9,12 @@ interface PlaylistImportJob {
   roomId: string
   link: string
   total: number
+  parsedCount: number
   successCount: number
   failedCount: number
   addedCount: number
   running: boolean
+  cancelled: boolean
   importedIds: Set<string>
 }
 
@@ -36,6 +38,7 @@ export async function importPlaylistByLink(roomId: string, link: string): Promis
       roomId,
       link,
       total: 0,
+      parsedCount: 0,
       successCount: 0,
       failedCount: 0,
       addedCount: 0,
@@ -60,14 +63,17 @@ export function startPlaylistImport(input: {
   if (existing?.running) return toProgress(existing, "progress", "歌单正在导入中")
 
   const importedIds = new Set(input.importedItemIds || [])
+  const initialCount = importedIds.size
   const job: PlaylistImportJob = {
     roomId: input.roomId,
     link: input.link,
     total: input.items.length,
-    successCount: importedIds.size,
+    parsedCount: initialCount,
+    successCount: initialCount,
     failedCount: 0,
-    addedCount: 0,
+    addedCount: initialCount,
     running: true,
+    cancelled: false,
     importedIds
   }
 
@@ -75,31 +81,80 @@ export function startPlaylistImport(input: {
   broadcastProgress(
     job,
     "started",
-    job.successCount > 0 ? `已加入 ${job.successCount} 首，剩余歌曲后台加载中` : "正在导入歌单"
+    job.successCount > 0 ? `已加入 ${job.addedCount} 首，剩余歌曲后台加载中` : "正在导入歌单"
   )
   void runPlaylistImport(job, input.items)
   return toProgress(job, "started", "歌单已开始导入")
 }
 
+export function cancelPlaylistImport(roomId: string): RequestRes<PlaylistImportProgress> {
+  const job = activeJobs.get(roomId)
+  if (!job || !job.running) {
+    return {
+      code: "0000",
+      showMsg: "当前房间没有正在运行的导入任务",
+      data: {
+        status: "cancelled",
+        roomId,
+        link: "",
+        total: 0,
+        parsedCount: 0,
+        successCount: 0,
+        failedCount: 0,
+        addedCount: 0,
+        message: "当前房间没有正在运行的导入任务"
+      }
+    }
+  }
+
+  job.cancelled = true
+  job.running = false
+  const progress = toProgress(job, "cancelled", `导入已取消：已加入 ${job.addedCount} 首，已解析 ${job.parsedCount}/${job.total}`)
+  broadcastToRoom(roomId, {
+    responseType: "PLAYLIST_IMPORT_PROGRESS",
+    playlistImportProgress: progress
+  })
+  return {
+    code: "0000",
+    showMsg: "已取消导入任务",
+    data: progress
+  }
+}
+
+export function getPlaylistImportProgress(roomId: string): PlaylistImportProgress | undefined {
+  const job = activeJobs.get(roomId)
+  if (!job) return undefined
+  return toProgress(job, job.cancelled ? "cancelled" : "progress", job.cancelled ? "导入已取消" : "歌单正在导入中")
+}
+
 async function runPlaylistImport(job: PlaylistImportJob, items: QueueItem[]): Promise<void> {
   try {
     for (const item of items) {
-      if (!job.running) break
+      if (job.cancelled || !job.running) break
       if (job.importedIds.has(item.id)) continue
 
       const room = roomRepo.get(job.roomId)
       if (!room || room.oState !== "OK") break
       if (roomHasQueueItem(room, item)) {
         job.importedIds.add(item.id)
+        job.parsedCount += 1
         job.successCount += 1
+        job.addedCount += 1
+        broadcastProgress(job, "progress", progressMessage(job))
         continue
       }
 
       await sleep(randomDelay())
+      if (job.cancelled || !job.running) break
+
       try {
         const content = await resolveQueueItemContent(item)
+        if (job.cancelled || !job.running) break
+
+        job.parsedCount += 1
         if (!content?.audioUrl) {
           job.failedCount += 1
+          broadcastProgress(job, "progress", progressMessage(job))
           continue
         }
 
@@ -111,16 +166,23 @@ async function runPlaylistImport(job: PlaylistImportJob, items: QueueItem[]): Pr
           job.addedCount += 1
           const latest = roomRepo.get(job.roomId)
           if (latest?.queue) broadcastQueue(job.roomId, latest)
-          broadcastProgress(job, "progress", `已加入 ${job.successCount} 首，剩余歌曲后台加载中`)
+        } else {
+          job.importedIds.add(item.id)
+          job.successCount += 1
         }
+        broadcastProgress(job, "progress", progressMessage(job))
       } catch {
+        job.parsedCount += 1
         job.failedCount += 1
+        broadcastProgress(job, "progress", progressMessage(job))
       }
     }
 
-    broadcastProgress(job, "completed", `导入完成：成功 ${job.successCount} 首，失败 ${job.failedCount} 首`)
+    if (!job.cancelled) {
+      job.running = false
+      broadcastProgress(job, "completed", `导入完成：成功 ${job.successCount} 首，失败 ${job.failedCount} 首`)
+    }
   } finally {
-    job.running = false
     activeJobs.delete(job.roomId)
   }
 }
@@ -175,11 +237,16 @@ function toProgress(job: PlaylistImportJob, status: PlaylistImportProgress["stat
     roomId: job.roomId,
     link: job.link,
     total: job.total,
+    parsedCount: Math.min(job.parsedCount, job.total),
     successCount: job.successCount,
     failedCount: job.failedCount,
     addedCount: job.addedCount,
     message
   }
+}
+
+function progressMessage(job: PlaylistImportJob): string {
+  return `已加入 ${job.addedCount} 首，已解析 ${Math.min(job.parsedCount, job.total)}/${job.total}，失败 ${job.failedCount} 首`
 }
 
 function contentToQueueItem(content: ContentData): QueueItem {

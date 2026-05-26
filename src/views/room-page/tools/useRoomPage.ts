@@ -19,7 +19,7 @@ import ptApi from "../../../utils/pt-api"
 import { initPlayer } from "./init-player"
 import { initWebSocket, sendToWebSocket } from "./init-websocket"
 import { shareData } from "./init-share"
-import { request_enter, request_heartbeat, request_leave, request_parse } from "./room-request"
+import { request_cancel_playlist_import, request_enter, request_heartbeat, request_leave, request_parse } from "./room-request"
 
 // 一些常量
 const COLLECT_TIMEOUT = 300    // 收集最新状态的最小间隔
@@ -46,7 +46,9 @@ const pageData: PageData = reactive({
   amIOwner: false,
   everyoneCanOperatePlayer: "Y",
   queue: undefined,
-  playlistImportMessage: ""
+  playlistImportMessage: "",
+  playlistImportProgress: undefined,
+  cancellingPlaylistImport: false
 })
 
 // 其他杂七杂八的数据
@@ -207,6 +209,23 @@ const onAppendQueueByLink = async () => {
   }
 }
 
+const onCancelPlaylistImport = async () => {
+  if(pageData.cancellingPlaylistImport) return
+  pageData.cancellingPlaylistImport = true
+  try {
+    const res = await request_cancel_playlist_import(pageData.roomId)
+    if(res?.data) {
+      updatePlaylistImportProgress(res.data as any)
+    }
+    else if(res?.code === "0000") {
+      pageData.playlistImportMessage = res.showMsg || "已取消导入任务"
+    }
+  }
+  finally {
+    pageData.cancellingPlaylistImport = false
+  }
+}
+
 export const useRoomPage = () => {
   const rr = useRouteAndPtRouter()
   router = rr.router
@@ -227,6 +246,7 @@ export const useRoomPage = () => {
     onQueueAdvance,
     onPlayModeChange,
     onAppendQueueByLink,
+    onCancelPlaylistImport,
   }
 }
 
@@ -706,7 +726,7 @@ function connectWebSocket() {
     else if(rT === "PLAYLIST_IMPORT_PROGRESS" && msgRes.playlistImportProgress) {
       const progress = msgRes.playlistImportProgress
       if(progress.roomId !== pageData.roomId) return
-      pageData.playlistImportMessage = progress.message
+      updatePlaylistImportProgress(progress)
       if(progress.status === "failed") {
         cui.showModal({
           title: "导入失败",
@@ -741,6 +761,11 @@ function connectWebSocket() {
   }
   ws = initWebSocket(callbacks)
   checkWebSocket()
+}
+
+function updatePlaylistImportProgress(progress: NonNullable<WsMsgRes["playlistImportProgress"]>) {
+  pageData.playlistImportProgress = progress
+  pageData.playlistImportMessage = progress.message
 }
 
 // 等待 5s 查看 web-socket 是否连接

@@ -75,10 +75,11 @@ export interface PendingPlaylistImport {
 }
 
 export interface PlaylistImportProgress {
-  status: "started" | "progress" | "completed" | "failed"
+  status: "started" | "progress" | "completed" | "cancelled" | "failed"
   roomId: string
   link: string
   total: number
+  parsedCount: number
   successCount: number
   failedCount: number
   addedCount: number

@@ -37,6 +37,8 @@ export interface PageData {
   everyoneCanOperatePlayer: "Y" | "N"
   queue?: RoomQueue
   playlistImportMessage?: string
+  playlistImportProgress?: PlaylistImportProgress
+  cancellingPlaylistImport: boolean
 }
 
 type SpeedRate = "0.8" | "1" | "1.2" | "1.5" | "1.7"

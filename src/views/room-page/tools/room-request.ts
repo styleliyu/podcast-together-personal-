@@ -29,3 +29,8 @@ export const request_parse = async(link: string): Promise<RequestRes<ContentData
   let res = await rq.request<ContentData>(api.PARSE_TEXT, { link })
   return res
 }
+
+export const request_cancel_playlist_import = async(roomId: string): Promise<RequestRes> => {
+  let res = await rq.request(api.PLAYLIST_IMPORT_CANCEL, { roomId })
+  return res
+}
