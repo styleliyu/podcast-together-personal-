@@ -4,6 +4,7 @@ import { ContentData, RoRes } from "../../type"
 import cui from "../../components/custom-ui"
 import { request_create, request_parse, request_upload_audio } from "./cp-request"
 import util from "../../utils/util"
+import { prepareLocalMusicFilesForUpload, releaseDecryptedMusicFile } from "../../utils/decryptMusicFile"
 
 let lastIntoFinishInput: number = 0
 
@@ -70,17 +71,40 @@ const finishInput = async (link: string, router: PtRouter, route: VueRoute, isPe
 
 const finishUpload = async (files: File[], router: PtRouter, route: VueRoute, isPersistent: boolean = false): Promise<void> => {
   if(!files.length) return
-  cui.showLoading({ title: "上传中.." })
-  const res = await request_upload_audio(files)
-  if(res?.code !== "0000") {
-    _showErr()
-    return
+  const prepared = {
+    files,
+    decrypted: [] as Awaited<ReturnType<typeof prepareLocalMusicFilesForUpload>>["decrypted"],
   }
 
-  let contentData = res.data as ContentData
-  _createRoom(contentData, router, route, false, isPersistent)
-}
+  try {
+    cui.showLoading({ title: "解析本地文件.." })
+    const nextPrepared = await prepareLocalMusicFilesForUpload(files)
+    prepared.files = nextPrepared.files
+    prepared.decrypted = nextPrepared.decrypted
 
+    cui.showLoading({ title: "上传中.." })
+    const res = await request_upload_audio(prepared.files)
+    if(res?.code !== "0000") {
+      _showErr()
+      return
+    }
+
+    let contentData = res.data as ContentData
+    _createRoom(contentData, router, route, false, isPersistent)
+  }
+  catch(err) {
+    cui.hideLoading()
+    const message = err instanceof Error ? err.message : "请确认文件格式后重试"
+    cui.showModal({
+      title: "本地文件解析失败",
+      content: message,
+      showCancel: false,
+    })
+  }
+  finally {
+    prepared.decrypted.forEach(releaseDecryptedMusicFile)
+  }
+}
 const getTargetLink = (route: VueRoute): string => {
   let list: string[] = []
 

@@ -5,7 +5,6 @@ import images from "../../images"
 import { onActivated, ref } from "vue"
 import share from "../../utils/share"
 import { useTheme } from "../../hooks/useTheme"
-import readmeText from "../../../README.md?raw"
 
 const githubLinks = [
   { name: "我的 GitHub", url: "https://github.com/styleliyu" },
@@ -19,6 +18,12 @@ const { theme } = useTheme()
 const router = useRouter()
 const showGithubMenu = ref(false)
 const showTutorial = ref(false)
+
+const usageTutorial = `1. 点击“创建房间”。
+2. 粘贴网易云、QQ、酷狗、酷我、百度/千千音乐的单曲或歌单链接，或点击“导入本地歌曲”选择本地文件。
+3. 本地文件支持 mp3、m4a、aac、flac、wav、ogg，以及 ncm、qmc、kgm、kwm 等常见加密音乐格式。
+4. 创建成功后，把房间链接发给朋友；同一房间内会同步播放、暂停、进度拖动、上一首、下一首和播放模式。
+5. 房间内可以继续添加单曲或歌单。导入大歌单时可在进度面板查看已解析、已加入和失败数量，也可以取消导入。`
 
 onActivated(() => {
   share.configShare()
@@ -81,7 +86,7 @@ const closeTutorial = () => {
         <h2>使用教程</h2>
         <button type="button" @click="closeTutorial">关闭</button>
       </header>
-      <pre>{{ readmeText }}</pre>
+      <pre>{{ usageTutorial }}</pre>
     </article>
   </div>
 </template>

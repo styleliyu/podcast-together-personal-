@@ -6,7 +6,7 @@ import multer from "multer"
 import type { ContentData, QueueItem, RequestRes, RoomQueue } from "./types"
 
 const uploadRoot = path.resolve(process.env.UPLOAD_DIR || path.resolve(process.cwd(), "data", "uploads"))
-const allowedExts = new Set([".mp3", ".m4a", ".aac"])
+const allowedExts = new Set([".mp3", ".m4a", ".aac", ".flac", ".wav", ".ogg", ".wma", ".dff"])
 
 fs.mkdirSync(uploadRoot, { recursive: true })
 
@@ -33,7 +33,7 @@ export const uploadMiddleware = multer({
 export function handleUploadAudio(req: Request, res: Response): void {
   const files = Array.isArray(req.files) ? req.files as Express.Multer.File[] : []
   if (!files.length) {
-    res.json({ code: "E4000", showMsg: "请选择 mp3、m4a 或 aac 音频文件。" } satisfies RequestRes)
+    res.json({ code: "E4000", showMsg: "请选择支持的本地音频文件。" } satisfies RequestRes)
     return
   }
 
@@ -72,7 +72,7 @@ export function handleUploadAudio(req: Request, res: Response): void {
 
 export function handleUploadError(err: unknown, _req: Request, res: Response, _next: NextFunction): void {
   console.error("upload audio failed", err instanceof Error ? err.message : err)
-  res.status(400).json({ code: "E4000", showMsg: "音频上传失败，请确认文件格式为 mp3、m4a 或 aac。" } satisfies RequestRes)
+  res.status(400).json({ code: "E4000", showMsg: "音频上传失败，请确认文件已解密为 mp3/m4a/aac/flac/wav/ogg/wma/dff。" } satisfies RequestRes)
 }
 
 export function getUploadRoot(): string {

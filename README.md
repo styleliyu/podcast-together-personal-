@@ -12,7 +12,7 @@
 - 支持房主限制其他成员操作播放器。
 - 支持房间播放队列、上一首、下一首、顺序播放、随机播放、单曲循环。
 - 支持在房间内继续添加单曲或歌单。
-- 支持本地 `mp3`、`m4a`、`aac` 文件上传到服务器后同步播放。
+- 支持本地普通音频和常见加密音乐文件上传。前端会先解析 `ncm`、`qmc`、`kgm`、`kwm` 等格式，解密为可播放音频后再上传到服务器同步播放。
 - 支持常驻房间，适合固定入口长期使用。
 - 支持大歌单渐进式导入：先创建房间并加入前几首可播放歌曲，后台再低频解析剩余歌曲，成功一首追加一首到队列。
 - 支持导入进度面板和取消导入任务。取消后已加入队列的歌曲不会被删除。
@@ -24,6 +24,7 @@
 - 数据库：SQLite，运行时数据默认存放在 `server/data/`。
 - 播放同步：HTTP 负责创建/进入房间，WebSocket 负责播放状态、队列、切歌和导入进度同步。
 - 音乐解析：入口在 `server/src/music/musicAdapter.ts`，平台链接识别已拆到 `server/src/music/adapters/`。
+- 本地文件解密：`decrypt-core/` 作为独立解密子系统接入，前端统一入口在 `src/utils/decryptMusicFile.ts`。
 - 房间状态：通过 `server/src/roomService.ts`、`server/src/queueService.ts`、`server/src/playbackService.ts` 和 `server/src/websocket.ts` 操作并持久化。
 
 ## 后端模块
@@ -39,6 +40,21 @@
 - `server/src/queueService.ts`：队列清洗、切歌索引、播放模式等队列辅助逻辑。
 - `server/src/playbackService.ts`：播放、暂停、进度同步的辅助逻辑。
 - `server/src/playlistImport.ts`：渐进式歌单导入、导入状态、取消导入任务。
+
+## 本地文件解析
+
+本地文件上传前会在浏览器端进行格式识别：
+
+- 普通音频：`mp3`、`m4a`、`aac`、`flac`、`wav`、`ogg`、`wma`、`dff`。
+- 网易云：`ncm`、`uc`。
+- QQ 音乐：`qmc*`、`mflac*`、`mgg*`、`tm*`、`tkm`、`cache` 等。
+- 酷狗：`kgm`、`kgma`、`vpr`。
+- 酷我：`kwm`。
+- 其他已由 `decrypt-core` 支持的格式：`xm`、`x2m`、`x3m`、`mg3d`、`ofl_en` 等。
+
+统一调用层是 `src/utils/decryptMusicFile.ts`。业务层只调用 `prepareLocalMusicFilesForUpload(files)` 或 `decryptMusicFile(file)`，不直接依赖 `decrypt-core` 内部的 `FileInfo` 结构。
+
+解密结果中的临时 `objectUrl` 和封面 `pictureUrl` 会在上传结束后释放。`decrypt-core` 内置的 QMC/KGM WASM bundle 当前以 JS 模块方式随前端构建打包，不需要额外配置静态 `.wasm` 路径。
 
 ## 支持的链接
 

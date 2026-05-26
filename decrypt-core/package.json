@@ -1,0 +1,27 @@
+{
+  "name": "unlock-music-decrypt-core",
+  "version": "1.10.3-extracted",
+  "private": true,
+  "description": "Extracted core decrypt modules from unlock-music.",
+  "license": "MIT",
+  "main": "src/decrypt/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build:wasm": "bash scripts/build-wasm.sh",
+    "build:qmc-wasm": "bash src/QmcWasm/build-wasm",
+    "build:kgm-wasm": "bash src/KgmWasm/build-wasm"
+  },
+  "dependencies": {
+    "browser-id3-writer": "^4.4.0",
+    "crypto-js": "^4.1.1",
+    "iconv-lite": "^0.6.3",
+    "jimp": "^0.16.1",
+    "metaflac-js": "^1.0.5",
+    "music-metadata-browser": "2.2.7",
+    "threads": "^1.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^17.0.29",
+    "typescript": "^4.6.3"
+  }
+}

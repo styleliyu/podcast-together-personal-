@@ -55,8 +55,8 @@ const pageData: PageData = reactive({
 let nickName: string = ""
 let localId: string = ""
 let guestId: string = ""
-let intervalHb: number = 0      // 维持心跳的 interval 的返回值
-let timeoutCollect: number = 0  // 上报最新播放状态的 timeout 的返回值
+let intervalHb: ReturnType<typeof setInterval> | null = null      // 维持心跳的 interval 的返回值
+let timeoutCollect: ReturnType<typeof setTimeout> | null = null  // 上报最新播放状态的 timeout 的返回值
 let srcDuration: number = 0     // 资源总时长（秒），如果为 0 代表还没解析出来
 let waitPlayer: Promise<boolean>
 let latestStatus: RoomStatus    // 最新的播放器状态
@@ -663,7 +663,7 @@ async function resume() {
 
   // 销毁心跳
   if(intervalHb) clearInterval(intervalHb)
-  intervalHb = 0
+  intervalHb = null
 
   cui.showLoading({ title: "请稍等.." })
 
@@ -900,7 +900,7 @@ async function handleAutoPlayPolicy() {
 async function leaveRoom(sendLeave: boolean = true) {
   // 销毁心跳
   if(intervalHb) clearInterval(intervalHb)
-  intervalHb = 0
+  intervalHb = null
 
   // 关闭 web-socket
   if(ws) {

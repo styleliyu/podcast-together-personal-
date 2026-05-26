@@ -12,12 +12,17 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "esModuleInterop": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"],
+      "@decrypt-core/*": ["decrypt-core/src/*"]
+    },
     "lib": ["ESNext", "DOM"],
     "skipLibCheck": true,
     "types": [
       "./node_modules/user-agent-data-types"
     ]
   },
-  "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.tsx", "src/**/*.vue"],
+  "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.tsx", "src/**/*.vue", "decrypt-core/src/**/*.d.ts"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

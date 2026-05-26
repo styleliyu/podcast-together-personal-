@@ -1,0 +1,9 @@
+declare module 'crypto-js/aes';
+declare module 'crypto-js/pad-pkcs7';
+declare module 'crypto-js/mode-ecb';
+declare module 'crypto-js/lib-typedarrays';
+declare module 'crypto-js/enc-base64';
+declare module 'crypto-js/enc-utf8';
+declare module 'crypto-js/enc-hex';
+declare module 'browser-id3-writer';
+declare module 'metaflac-js';

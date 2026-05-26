@@ -4,6 +4,7 @@ import { hasPreviousRouteInApp, goHome, useRouteAndPtRouter } from "../../routes
 import PtButton from "../../components/pt-button.vue"
 import cp from "./cp-helper"
 import ListeningLoader from '../../components/listening-loader.vue'
+import { LOCAL_MUSIC_ACCEPT } from "../../utils/decryptMusicFile"
 
 const { router, route } = useRouteAndPtRouter()
 const hasPrev = hasPreviousRouteInApp()
@@ -85,7 +86,7 @@ onActivated(() => {
         maxlength="1000"
         ref="inputEl"
       />
-      <p>支持播客、mp3/m4a/aac、网易云、QQ、酷狗、酷我、百度音乐单曲和歌单链接</p>
+      <p>支持播客、音乐链接、歌单链接、本地普通音频，以及 ncm/qmc/kgm/kwm 等加密音乐文件</p>
       <label class="persistent-row">
         <input v-model="isPersistent" type="checkbox" />
         <span>常驻房间</span>
@@ -94,7 +95,7 @@ onActivated(() => {
         ref="fileEl"
         class="file-input"
         type="file"
-        accept=".mp3,.m4a,.aac,audio/mpeg,audio/mp4,audio/aac"
+        :accept="LOCAL_MUSIC_ACCEPT"
         multiple
         @change="onFileChange"
       />

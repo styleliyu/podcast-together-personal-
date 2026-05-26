@@ -32,6 +32,7 @@ export default defineConfig(() => {
     resolve: {
       alias: {
         "@": resolve(projectRoot, "src"),
+        "@decrypt-core": resolve(projectRoot, "decrypt-core/src"),
       }
     },
     define: {
