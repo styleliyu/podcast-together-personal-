@@ -85,13 +85,6 @@ export const roomRepo = {
     return next
   },
 
-  findActiveByOwner(owner: string): Room | undefined {
-    const row = db
-      .prepare("SELECT id, data FROM rooms WHERE owner = ? AND state = 'OK' ORDER BY create_stamp DESC LIMIT 1")
-      .get(owner) as { id: string; data: string } | undefined
-    return toRoom(row)
-  },
-
   findPlayingRooms(): Room[] {
     const rows = db
       .prepare("SELECT id, data FROM rooms WHERE state = 'OK' AND play_status = 'PLAYING' ORDER BY create_stamp ASC")

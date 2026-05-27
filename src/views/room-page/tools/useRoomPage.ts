@@ -5,7 +5,7 @@
  */
 import { ref, reactive, onActivated, onDeactivated, nextTick } from "vue"
 import { PageData, PageState, WsMsgRes, RoomStatus, PlayStatus, RevokeType } from "../../../type/type-room-page"
-import { ContentData, PlayMode, QueueItem, RequestRes, RoRes } from "../../../type"
+import { ContentData, PlayMode, QueueItem, RequestRes, RoRes, RoomQueue } from "../../../type"
 import { RouteLocationNormalizedLoaded } from "vue-router"
 import { useRouteAndPtRouter, PtRouter, goHome } from "../../../routes/pt-router"
 import ptUtil from "../../../utils/pt-util"
@@ -64,6 +64,9 @@ let isShowingAutoPlayPolicy: boolean = false  // 当前是否已在展示 autopl
 let heartbeatNum = 0            // 心跳的次数
 let receiveWsNum = 0            // 收到 web-socket 的次数
 let pausedSec = 0               // 已经暂停的秒数
+let hasAppliedInitialPlaybackStatus = false
+let lastAppliedPlaybackSignature = ""
+let playerReadyToken = 0
 
 // 时间戳
 let lastOperateLocalStamp = 0        // 上一个本地设置远端服务器的时间戳
@@ -80,6 +83,19 @@ let isRemoteSetSpeedRate = false
 // 播放器准备好的回调
 type SimpleFunc = (param1: boolean) => void
 let playerAlready: SimpleFunc
+
+interface PlayingTrackIdentity {
+  id: string
+  audioUrl: string
+  hasStableId: boolean
+}
+
+interface RoomStatusClassification {
+  trackChanged: boolean
+  queueOnlyChanged: boolean
+  playModeOnlyChanged: boolean
+  playbackStatusChanged: boolean
+}
 
 
 const toHome = () => {
@@ -314,6 +330,8 @@ function enterResToErrState(res?: RequestRes) {
 //    赋值 / 创建播放器 / 开启 20s 轮询机制 / 建立 webSocket
 function afterEnter(roRes: RoRes) {
   guestId = roRes?.guestId ?? ""
+  hasAppliedInitialPlaybackStatus = false
+  lastAppliedPlaybackSignature = ""
   pageData.content = roRes.content
   pageData.queue = roRes.queue
   pageData.amIOwner = roRes?.iamOwner === "Y" ? true : false
@@ -338,6 +356,7 @@ function createPlayer() {
   waitPlayer = new Promise((a: SimpleFunc) => {
     playerAlready = a
   })
+  const readyToken = ++playerReadyToken
 
   const audio = {
     src: content.audioUrl,
@@ -348,10 +367,14 @@ function createPlayer() {
 
   const durationchange = (duration?: number) => {
     if(duration) srcDuration = duration
-    showPage()
+    showPage(readyToken)
   }
-  const canplay = (e: Event) => {}
-  const loadeddata = (e: Event) => {}
+  const canplay = (e: Event) => {
+    showPage(readyToken)
+  }
+  const loadeddata = (e: Event) => {
+    showPage(readyToken)
+  }
 
   const pause = (e: Event) => {
     playStatus = "PAUSED"
@@ -453,6 +476,99 @@ function sendImportPlaylist(link: string) {
   })
 }
 
+function getPlayingTrackIdentity(content?: ContentData, queue?: RoomQueue): PlayingTrackIdentity {
+  const currentItem = queue?.items?.[queue.currentIndex]
+  const audioUrl = currentItem?.audioUrl || content?.audioUrl || ""
+  const id = currentItem?.id || `${content?.sourceType || "audio"}:${content?.linkUrl || audioUrl}`
+  return { id, audioUrl, hasStableId: Boolean(currentItem?.id) }
+}
+
+function isSamePlayingTrack(
+  oldContent?: ContentData,
+  oldQueue?: RoomQueue,
+  newContent?: ContentData,
+  newQueue?: RoomQueue,
+): boolean {
+  const oldTrack = getPlayingTrackIdentity(oldContent, oldQueue)
+  const newTrack = getPlayingTrackIdentity(newContent, newQueue)
+  if(
+    oldTrack.audioUrl
+    && newTrack.audioUrl
+    && oldTrack.audioUrl === newTrack.audioUrl
+    && (!oldTrack.hasStableId || !newTrack.hasStableId)
+  ) {
+    return true
+  }
+  return oldTrack.id === newTrack.id && oldTrack.audioUrl === newTrack.audioUrl
+}
+
+function buildPlaybackSignature(status: RoomStatus, content?: ContentData, queue?: RoomQueue): string {
+  const track = getPlayingTrackIdentity(content, queue)
+  return [
+    track.id,
+    track.audioUrl,
+    status.playStatus,
+    status.speedRate,
+    status.contentStamp,
+    status.operateStamp,
+  ].join("|")
+}
+
+function isSameQueueItems(a?: RoomQueue, b?: RoomQueue): boolean {
+  if(!a || !b) return a === b
+  if(a.currentIndex !== b.currentIndex) return false
+  if(a.items.length !== b.items.length) return false
+  return a.items.every((item, index) => {
+    const next = b.items[index]
+    return item.id === next.id && (item.audioUrl || "") === (next.audioUrl || "")
+  })
+}
+
+function classifyRoomStatus(status: RoomStatus): RoomStatusClassification {
+  const oldContent = pageData.content
+  const oldQueue = pageData.queue
+  const nextContent = status.content || oldContent
+  const nextQueue = status.queue || oldQueue
+  const trackChanged = !isSamePlayingTrack(oldContent, oldQueue, nextContent, nextQueue)
+  const hasQueueUpdate = Boolean(status.queue)
+  const queueItemsChanged = hasQueueUpdate && !isSameQueueItems(oldQueue, nextQueue)
+  const playModeOnlyChanged = Boolean(
+    hasQueueUpdate
+    && oldQueue
+    && nextQueue
+    && oldQueue.playMode !== nextQueue.playMode
+    && isSameQueueItems({ ...oldQueue, playMode: nextQueue.playMode }, nextQueue)
+  )
+  const nextSignature = buildPlaybackSignature(status, nextContent, nextQueue)
+  const playbackStatusChanged = !hasAppliedInitialPlaybackStatus || trackChanged || nextSignature !== lastAppliedPlaybackSignature
+
+  return {
+    trackChanged,
+    queueOnlyChanged: hasQueueUpdate && !trackChanged && queueItemsChanged && !playbackStatusChanged,
+    playModeOnlyChanged,
+    playbackStatusChanged,
+  }
+}
+
+function applyRoomStatus(status: RoomStatus): RoomStatusClassification {
+  const classification = classifyRoomStatus(status)
+  if(status.content) {
+    pageData.content = status.content
+    pageData.showMoreBox = handleShowMoreBox(status.content)
+  }
+  if(status.queue) pageData.queue = status.queue
+  if(status.everyoneCanOperatePlayer) {
+    pageData.everyoneCanOperatePlayer = status.everyoneCanOperatePlayer
+  }
+
+  if(classification.trackChanged) {
+    playStatus = "PAUSED"
+    createPlayer()
+  }
+
+  return classification
+}
+
 let lastShowOperateFailed = 0
 function showOperateFailed() {
   const now = time.getLocalTime()
@@ -498,11 +614,12 @@ async function checkPlayerReadyAgain() {
   pageData.state = 19
 }
 
-function showPage(): void {
+function showPage(readyToken?: number): void {
+  if(readyToken && readyToken !== playerReadyToken) return
   if(pageData.state <= 2) {
     pageData.state = 3
-    playerAlready(true)
   }
+  playerAlready(true)
 }
 
 // 收集最新状态，再用 ws 上报
@@ -564,8 +681,6 @@ function heartbeat() {
   }
 
   const _newRoomStatus = (roRes: RoRes) => {
-    pageData.content = roRes.content
-    pageData.queue = roRes.queue
     pageData.participants = showParticipants(roRes.participants, guestId)
 
     const now = time.getLocalTime()
@@ -597,7 +712,7 @@ function heartbeat() {
       playMode: roRes.playMode
     }
     if(roRes.everyoneCanOperatePlayer) {
-      pageData.everyoneCanOperatePlayer = roRes.everyoneCanOperatePlayer
+      latestStatus.everyoneCanOperatePlayer = roRes.everyoneCanOperatePlayer
     }
     receiveNewStatus("http")
   }
@@ -687,9 +802,21 @@ async function resume() {
   }
   let roRes = res.data as RoRes
   guestId = roRes.guestId ?? ""
-  pageData.content = roRes.content
-  pageData.queue = roRes.queue
   pageData.participants = showParticipants(roRes.participants, guestId)
+  latestStatus = {
+    roomId: roRes.roomId,
+    content: roRes.content,
+    playStatus: roRes.playStatus,
+    speedRate: roRes.speedRate,
+    operator: roRes.operator,
+    contentStamp: roRes.contentStamp,
+    operateStamp: roRes.operateStamp,
+    queue: roRes.queue,
+    currentIndex: roRes.currentIndex,
+    playMode: roRes.playMode,
+    everyoneCanOperatePlayer: roRes.everyoneCanOperatePlayer
+  }
+  await receiveNewStatus("http")
   heartbeat()
   connectWebSocket()
 }
@@ -712,15 +839,6 @@ function connectWebSocket() {
       // console.log(" ")
       lastNewStatusFromWsStamp = time.getLocalTime()
       latestStatus = roomStatus
-      if(roomStatus.content && roomStatus.content.audioUrl !== pageData.content?.audioUrl) {
-        pageData.content = roomStatus.content
-        pageData.showMoreBox = handleShowMoreBox(roomStatus.content)
-        createPlayer()
-      }
-      if(roomStatus.queue) pageData.queue = roomStatus.queue
-      if(roomStatus.everyoneCanOperatePlayer) {
-        pageData.everyoneCanOperatePlayer = roomStatus.everyoneCanOperatePlayer
-      }
       receiveNewStatus()
     }
     else if(rT === "PLAYLIST_IMPORT_PROGRESS" && msgRes.playlistImportProgress) {
@@ -790,14 +908,11 @@ function firstSend() {
 
 async function receiveNewStatus(fromType: RevokeType = "ws") {
   if(latestStatus.roomId !== pageData.roomId) return
-  if(latestStatus.content && latestStatus.content.audioUrl !== pageData.content?.audioUrl) {
-    pageData.content = latestStatus.content
-    pageData.showMoreBox = handleShowMoreBox(latestStatus.content)
-    createPlayer()
-  }
-  if(latestStatus.queue) pageData.queue = latestStatus.queue
+  const statusType = applyRoomStatus(latestStatus)
+  if(!statusType.trackChanged && !statusType.playbackStatusChanged) return
 
   await waitPlayer
+  hasAppliedInitialPlaybackStatus = true
   let { contentStamp } = latestStatus
 
   // 判断时间
@@ -822,9 +937,10 @@ async function receiveNewStatus(fromType: RevokeType = "ws") {
   // 判断播放状态
   let rPlayStatus = latestStatus.playStatus
   let diff2 = (srcDuration * 1000) - contentStamp
-  if(rPlayStatus !== playStatus) {
+  const shouldForcePlayAfterTrackChange = statusType.trackChanged && rPlayStatus === "PLAYING"
+  if(shouldForcePlayAfterTrackChange || rPlayStatus !== playStatus) {
     // 如果剩下 1s 就结束了 还要播放，进行阻挡
-    if(rPlayStatus === "PLAYING" && diff2 < 1000) return
+    if(!statusType.trackChanged && rPlayStatus === "PLAYING" && diff2 < 1000) return
     if(rPlayStatus === "PLAYING" && !isShowingAutoPlayPolicy) {
       console.log("远端请求播放......")
       isRemoteSetPlaying = true
@@ -843,6 +959,7 @@ async function receiveNewStatus(fromType: RevokeType = "ws") {
       player.pause()
     }
   }
+  lastAppliedPlaybackSignature = buildPlaybackSignature(latestStatus, pageData.content, pageData.queue)
 }
 
 // 由于 iOS 初始化时设置时间点 会不起作用

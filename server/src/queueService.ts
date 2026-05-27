@@ -53,8 +53,7 @@ export function buildQueueRoomStatus(
   roomId: string,
   room: Room,
   queue: RoomQueue,
-  operator: string,
-  operateStamp: number
+  operator: string
 ): RoomStatus {
   return {
     roomId,
@@ -62,7 +61,7 @@ export function buildQueueRoomStatus(
     playStatus: room.playStatus,
     speedRate: room.speedRate,
     contentStamp: room.contentStamp,
-    operateStamp,
+    operateStamp: room.operateStamp,
     operator,
     queue,
     currentIndex: queue.currentIndex,

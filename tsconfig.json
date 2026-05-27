@@ -15,7 +15,7 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],
-      "@decrypt-core/*": ["decrypt-core/src/*"]
+      "@decrypt-core/*": ["src/decrypt-core/*"]
     },
     "lib": ["ESNext", "DOM"],
     "skipLibCheck": true,
@@ -23,6 +23,7 @@
       "./node_modules/user-agent-data-types"
     ]
   },
-  "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.tsx", "src/**/*.vue", "decrypt-core/src/**/*.d.ts"],
+  "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.tsx", "src/**/*.vue"],
+  "exclude": ["src/decrypt-core/**/__test__/**"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

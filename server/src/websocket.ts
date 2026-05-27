@@ -74,6 +74,11 @@ async function handleMessage(socket: PtWebSocket, data: unknown): Promise<void> 
     return
   }
 
+  if (req.operateType !== "FIRST_SEND" && !isSocketInRoom(socket, req.roomId)) {
+    socket.close()
+    return
+  }
+
   if (req.operateType === "FIRST_SEND") await handleFirstSend(socket, req)
   else if (req.operateType === "SET_PLAYER") await handleSetPlayer(socket, req as ReqOperatePlayer)
   else if (req.operateType === "SET_QUEUE_INDEX") await handleSetQueueIndex(socket, req as ReqSetQueueIndex)
@@ -82,6 +87,10 @@ async function handleMessage(socket: PtWebSocket, data: unknown): Promise<void> 
   else if (req.operateType === "APPEND_QUEUE") await handleAppendQueue(socket, req as ReqAppendQueue)
   else if (req.operateType === "IMPORT_PLAYLIST") await handleImportPlaylist(socket, req as ReqImportPlaylist)
   else if (req.operateType === "HEARTBEAT") handleHeartbeat(socket, req)
+}
+
+function isSocketInRoom(socket: PtWebSocket, roomId: string): boolean {
+  return Boolean(socket.roomId && socket.roomId === roomId)
 }
 
 function handleHeartbeat(socket: PtWebSocket, req: ReqBase): void {
@@ -178,10 +187,10 @@ async function handleSetPlayMode(socket: PtWebSocket, req: ReqSetPlayMode): Prom
   if (!guestId || !isPlayMode(req.playMode)) return
 
   const queue: RoomQueue = { ...room.queue, playMode: req.playMode }
-  roomRepo.update(req.roomId, { queue, operator: guestId, operateStamp: req["x-pt-stamp"] })
+  roomRepo.update(req.roomId, { queue, operator: guestId })
   broadcaster.broadcastToRoom(req.roomId, {
     responseType: "NEW_STATUS",
-    roomStatus: buildQueueRoomStatus(req.roomId, room, queue, guestId, req["x-pt-stamp"])
+    roomStatus: buildQueueRoomStatus(req.roomId, room, queue, guestId)
   })
 }
 
@@ -198,10 +207,10 @@ async function handleAppendQueue(socket: PtWebSocket, req: ReqAppendQueue): Prom
     ? { ...room.queue, items: [...room.queue.items, ...incoming] }
     : { items: [contentToQueueItem(room.content), ...incoming], currentIndex: 0, playMode: "sequence" }
 
-  roomRepo.update(req.roomId, { queue, operator: guestId, operateStamp: req["x-pt-stamp"] })
+  roomRepo.update(req.roomId, { queue, operator: guestId })
   broadcaster.broadcastToRoom(req.roomId, {
     responseType: "NEW_STATUS",
-    roomStatus: buildQueueRoomStatus(req.roomId, room, queue, guestId, req["x-pt-stamp"])
+    roomStatus: buildQueueRoomStatus(req.roomId, room, queue, guestId)
   })
 }
 

@@ -153,7 +153,6 @@ async function handleCreate(
   ip?: string | string[]
 ): Promise<RequestRes<RoRes>> {
   const clientId = body["x-pt-local-id"]
-  await checkMyRoomAndDelete(clientId)
   await recordVisitor(body, ua, ip)
 
   const now = Date.now()
@@ -199,17 +198,6 @@ async function handleCreate(
       isPersistent: room.isPersistent
     }
   }
-}
-
-async function checkMyRoomAndDelete(clientId: string): Promise<boolean> {
-  let room = roomRepo.findActiveByOwner(clientId)
-  if (room && !room.isPersistent) {
-    room = pausePlayer(room)
-    room.oState = "DELETED"
-    room.participants = []
-    roomRepo.update(room._id, room)
-  }
-  return true
 }
 
 function stripQueueFromContent(content: ContentData): ContentData {

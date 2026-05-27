@@ -202,7 +202,7 @@ function appendQueueItem(roomId: string, item: QueueItem): boolean {
     items: [...baseQueue.items, item]
   }
 
-  roomRepo.update(roomId, { queue, operateStamp: Date.now() })
+  roomRepo.update(roomId, { queue })
   return true
 }
 
