@@ -84,6 +84,15 @@ export interface PlaylistImportProgress {
   failedCount: number
   addedCount: number
   message: string
+  failedTracks?: FailedTrack[]
+}
+
+export interface FailedTrack {
+  title?: string
+  artist?: string
+  source?: string
+  reason: string
+  rawReason?: string
 }
 
 export interface LocalImportFailure {

@@ -5,7 +5,7 @@ import { useRoomPage } from "./tools/useRoomPage"
 import ListeningLoader from '../../components/listening-loader.vue'
 import images from '../../images';
 import { initBtns } from "./tools/handle-btns"
-import { computed, ref, toRef } from 'vue';
+import { computed, ref, toRef, watch } from 'vue';
 import { useTheme } from '../../hooks/useTheme';
 import { initManage } from './tools/init-manage';
 import RoomManagePopup from './room-manage-popup.vue';
@@ -49,6 +49,7 @@ const {
 useCccee(pageData)
 
 const alwaysFalse = ref(false)
+const showPlaylistImportFailureDetails = ref(false)
 const hasLink = computed(() => {
   const linkUrl = pageData.content?.linkUrl
   if(linkUrl) return true
@@ -101,6 +102,36 @@ const canCancelPlaylistImport = computed(() => {
 const showPlaylistImportDetails = computed(() => {
   return showPlaylistImportPanel.value && !pageData.playlistImportCollapsed
 })
+
+const playlistImportFailedTracks = computed(() => {
+  return pageData.playlistImportProgress?.failedTracks || []
+})
+
+const showPlaylistImportFailureEntry = computed(() => {
+  const progress = pageData.playlistImportProgress
+  return Boolean((progress?.failedCount || 0) > 0 && playlistImportFailedTracks.value.length > 0)
+})
+
+const visiblePlaylistImportFailedTracks = computed(() => {
+  return playlistImportFailedTracks.value.slice(0, 10)
+})
+
+const hiddenPlaylistImportFailedTrackCount = computed(() => {
+  const progress = pageData.playlistImportProgress
+  const total = progress?.failedCount || playlistImportFailedTracks.value.length
+  return Math.max(total - visiblePlaylistImportFailedTracks.value.length, 0)
+})
+
+const onTogglePlaylistImportFailureDetails = () => {
+  showPlaylistImportFailureDetails.value = !showPlaylistImportFailureDetails.value
+}
+
+watch(
+  () => pageData.playlistImportProgress?.status,
+  status => {
+    if(status === "started") showPlaylistImportFailureDetails.value = false
+  }
+)
 
 const queueCurrentNumber = computed(() => {
   if(!pageData.queue?.items?.length) return 0
@@ -186,6 +217,31 @@ const onTapShowMore = () => {
             <span>已加入：{{ pageData.playlistImportProgress?.addedCount || 0 }} 首</span>
             <span>已解析：{{ pageData.playlistImportProgress?.parsedCount || 0 }} / {{ pageData.playlistImportProgress?.total || 0 }}</span>
             <span>失败：{{ pageData.playlistImportProgress?.failedCount || 0 }} 首</span>
+          </div>
+          <div v-if="showPlaylistImportDetails && showPlaylistImportFailureEntry" class="playlist-import-panel__failures">
+            <button class="playlist-import-panel__failure-toggle" @click="onTogglePlaylistImportFailureDetails">
+              {{ showPlaylistImportFailureDetails ? '收起失败详情' : '查看失败详情' }}
+            </button>
+            <div v-if="showPlaylistImportFailureDetails" class="playlist-import-panel__failure-list">
+              <div
+                v-for="(item, index) in visiblePlaylistImportFailedTracks"
+                :key="`${item.source || item.title || 'failed'}-${index}`"
+                class="playlist-import-panel__failure-item"
+              >
+                <div class="playlist-import-panel__failure-main">
+                  {{ item.title || item.source || '未知歌曲' }}
+                </div>
+                <div v-if="item.artist || item.source" class="playlist-import-panel__failure-sub">
+                  {{ item.artist || item.source }}
+                </div>
+                <div class="playlist-import-panel__failure-reason">
+                  {{ item.reason || '未知错误' }}
+                </div>
+              </div>
+              <div v-if="hiddenPlaylistImportFailedTrackCount > 0" class="playlist-import-panel__failure-more">
+                还有 {{ hiddenPlaylistImportFailedTrackCount }} 条失败未展示。
+              </div>
+            </div>
           </div>
         </div>
         <div class="queue-list">
@@ -535,6 +591,48 @@ const onTapShowMore = () => {
     color: var(--note-color);
     font-size: 13px;
     line-height: 20px;
+  }
+
+  .playlist-import-panel__failures {
+    margin-top: 12px;
+  }
+
+  .playlist-import-panel__failure-toggle {
+    margin-top: 2px;
+  }
+
+  .playlist-import-panel__failure-list {
+    margin-top: 10px;
+    max-height: 260px;
+    overflow: auto;
+  }
+
+  .playlist-import-panel__failure-item {
+    padding: 10px 0;
+    border-top: 1px solid rgba(127, 127, 127, .18);
+  }
+
+  .playlist-import-panel__failure-main {
+    color: var(--text-color);
+    font-size: 13px;
+    line-height: 20px;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+
+  .playlist-import-panel__failure-sub,
+  .playlist-import-panel__failure-reason,
+  .playlist-import-panel__failure-more {
+    margin-top: 3px;
+    color: var(--note-color);
+    font-size: 12px;
+    line-height: 18px;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+
+  .playlist-import-panel__failure-reason {
+    color: var(--desc-color);
   }
 
   .queue-list {

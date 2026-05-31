@@ -1,12 +1,14 @@
 import { roomRepo } from "./db"
 import { getPlaylistImportData, resolveQueueItemContent, toPlayableQueueItem } from "./music/musicAdapter"
-import type { ContentData, PlaylistImportProgress, QueueItem, RequestRes, ResToFe, Room, RoomQueue } from "./types"
+import type { ContentData, FailedTrack, PlaylistImportProgress, QueueItem, RequestRes, ResToFe, Room, RoomQueue } from "./types"
 
 const IMPORT_DELAY_MIN_MS = 800
 const IMPORT_DELAY_MAX_MS = 1500
+const MAX_FAILED_TRACK_DETAILS = 50
+const MAX_RAW_REASON_LENGTH = 200
 
 // Playlist import owns progressive parsing, cancellation, progress broadcasts,
-// and the future failedTracks detail surface. It must never append to deleted rooms.
+// and failedTracks details. It must never append to deleted rooms.
 interface PlaylistImportJob {
   roomId: string
   link: string
@@ -14,6 +16,7 @@ interface PlaylistImportJob {
   parsedCount: number
   successCount: number
   failedCount: number
+  failedTracks: FailedTrack[]
   addedCount: number
   running: boolean
   cancelled: boolean
@@ -73,6 +76,7 @@ export function startPlaylistImport(input: {
     parsedCount: initialCount,
     successCount: initialCount,
     failedCount: 0,
+    failedTracks: [],
     addedCount: initialCount,
     running: true,
     cancelled: false,
@@ -166,7 +170,7 @@ async function runPlaylistImport(job: PlaylistImportJob, items: QueueItem[]): Pr
 
         job.parsedCount += 1
         if (!content?.audioUrl) {
-          job.failedCount += 1
+          recordImportFailure(job, item, "歌曲可能需要会员或版权受限", "play url empty")
           broadcastProgress(job, "progress", progressMessage(job))
           continue
         }
@@ -185,9 +189,9 @@ async function runPlaylistImport(job: PlaylistImportJob, items: QueueItem[]): Pr
           job.successCount += 1
         }
         broadcastProgress(job, "progress", progressMessage(job))
-      } catch {
+      } catch (err) {
         job.parsedCount += 1
-        job.failedCount += 1
+        recordImportFailure(job, item, normalizeImportFailureReason(err), err)
         broadcastProgress(job, "progress", progressMessage(job))
       }
     }
@@ -265,7 +269,8 @@ function toProgress(job: PlaylistImportJob, status: PlaylistImportProgress["stat
     successCount: job.successCount,
     failedCount: job.failedCount,
     addedCount: job.addedCount,
-    message
+    message,
+    ...(job.failedTracks.length ? { failedTracks: job.failedTracks } : {})
   }
 }
 
@@ -295,6 +300,63 @@ function sameQueueItem(a: QueueItem, b: QueueItem): boolean {
 
 function roomHasQueueItem(room: Room, item: QueueItem): boolean {
   return Boolean(room.queue?.items.some(existing => sameQueueItem(existing, item)))
+}
+
+function recordImportFailure(job: PlaylistImportJob, item: QueueItem, reason: string, rawReason?: unknown): void {
+  job.failedCount += 1
+  if (job.failedTracks.length >= MAX_FAILED_TRACK_DETAILS) return
+
+  job.failedTracks.push({
+    title: cleanFailureText(item.title),
+    artist: cleanFailureText(item.artist),
+    source: cleanFailureText(item.linkUrl || item.resourceId || item.sourceType || item.id),
+    reason: cleanFailureText(reason) || "未知错误",
+    rawReason: getRawReason(rawReason)
+  })
+}
+
+function normalizeImportFailureReason(error: unknown, fallback: string = "未知错误"): string {
+  const raw = (getRawReason(error) || "").toLowerCase()
+  if (!raw) return fallback
+  if (/econn|etimedout|timeout|network|socket|enotfound|eai_again|axios|fetch/.test(raw)) {
+    return "网络请求失败"
+  }
+  if (/unsupported|not supported|platform|暂不支持/.test(raw)) {
+    return "平台暂不支持"
+  }
+  if (/parse|invalid url|invalid link|无法解析|解析失败/.test(raw)) {
+    return "无法解析歌曲链接"
+  }
+  if (/eacces|enospc|write|save|保存/.test(raw)) {
+    return "服务器保存失败"
+  }
+  return fallback
+}
+
+function getRawReason(error: unknown): string | undefined {
+  const raw = rawReasonText(error)
+  if (!raw) return undefined
+  return raw.replace(/\s+/g, " ").trim().slice(0, MAX_RAW_REASON_LENGTH)
+}
+
+function rawReasonText(error: unknown): string {
+  if (!error) return ""
+  if (typeof error === "string") return error
+  if (error instanceof Error) return error.message || error.name
+  if (typeof error === "object") {
+    const data = error as Record<string, unknown>
+    const parts = [data.code, data.message, data.status, data.statusText]
+      .map(value => typeof value === "string" || typeof value === "number" ? String(value) : "")
+      .filter(Boolean)
+    if (parts.length) return parts.join(" ")
+  }
+  return String(error)
+}
+
+function cleanFailureText(value?: string): string | undefined {
+  if (typeof value !== "string") return undefined
+  const text = value.trim()
+  return text || undefined
 }
 
 function randomDelay(): number {
