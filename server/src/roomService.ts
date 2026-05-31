@@ -10,20 +10,25 @@ import type {
   Visitor
 } from "./types"
 import { roomRepo, visitorRepo } from "./db"
-import { startPlaylistImport } from "./playlistImport"
+import { startPlaylistImport, stopPlaylistImportForRoom } from "./playlistImport"
+import { env } from "./config/env"
+import { broadcaster } from "./websocket/broadcaster"
 
 const MAX_ROOM_NUM = 15
 const defaultRoomCfg: RoomConfig = {
   everyoneCanOperatePlayer: "Y"
 }
 
-type OperateType = "CREATE" | "ENTER" | "HEARTBEAT" | "LEAVE"
+// Room service owns room lifecycle and metadata: create, enter, leave,
+// heartbeat, naming, deletion, and future permission entry points.
+type OperateType = "CREATE" | "ENTER" | "HEARTBEAT" | "LEAVE" | "SET_ROOM_NAME" | "DELETE_ROOM"
 
 interface CommonBody {
-  operateType: "ENTER" | "HEARTBEAT" | "LEAVE"
+  operateType: "ENTER" | "HEARTBEAT" | "LEAVE" | "SET_ROOM_NAME" | "DELETE_ROOM"
   roomId: string
   nickName: string
   "x-pt-local-id": string
+  roomName?: string
 }
 
 interface CreateBody {
@@ -32,6 +37,7 @@ interface CreateBody {
   nickName?: string
   "x-pt-local-id": string
   isPersistent?: boolean
+  roomName?: string
 }
 
 export async function handleRoomOperate(ctx: RequestContext): Promise<RequestRes<RoRes>> {
@@ -46,8 +52,51 @@ export async function handleRoomOperate(ctx: RequestContext): Promise<RequestRes
   if (operateType === "ENTER") return handleEnter(ctx.body as CommonBody, ua, ip)
   if (operateType === "HEARTBEAT") return handleHeartbeat(ctx.body as CommonBody)
   if (operateType === "LEAVE") return handleLeave(ctx.body as CommonBody)
+  if (operateType === "SET_ROOM_NAME") return handleSetRoomName(ctx.body as CommonBody)
+  if (operateType === "DELETE_ROOM") return handleDeleteRoom(ctx.body as CommonBody)
 
   return { code: "E4044" }
+}
+
+async function handleSetRoomName(body: CommonBody): Promise<RequestRes<RoRes>> {
+  const clientId = body["x-pt-local-id"]
+  const { roomId } = body
+  const room = roomRepo.get(roomId)
+  if (!room || !room._id) return { code: "E4004" }
+  if (room.oState === "EXPIRED") return { code: "E4006" }
+  if (room.oState === "DELETED") return { code: "E4004" }
+  if (room.owner !== clientId) return { code: "E4003" }
+
+  const roomName = sanitizeRoomName(body.roomName)
+  if (!roomName) return { code: "E4000", showMsg: "房间名称不能为空" }
+
+  const next = roomRepo.update(roomId, { roomName })
+  broadcaster.broadcastRoomInfo(roomId, {
+    roomId,
+    roomName
+  })
+  return { code: "0000", data: toRoRes(next || { ...room, roomName }) }
+}
+
+async function handleDeleteRoom(body: CommonBody): Promise<RequestRes<RoRes>> {
+  const clientId = body["x-pt-local-id"]
+  const { roomId } = body
+  const room = roomRepo.get(roomId)
+  if (!room || !room._id) return { code: "E4004" }
+  if (room.oState === "EXPIRED") return { code: "E4006" }
+  if (room.oState === "DELETED") return { code: "0000" }
+  if (room.owner !== clientId) return { code: "E4003" }
+  if (!room.isPersistent) return { code: "E4000", showMsg: "只有常驻房间可以主动删除" }
+
+  stopPlaylistImportForRoom(roomId)
+  roomRepo.update(roomId, {
+    oState: "DELETED",
+    playStatus: "PAUSED",
+    participants: [],
+    emptyStamp: Date.now()
+  })
+  broadcaster.broadcastRoomDeleted(roomId)
+  return { code: "0000", showMsg: "房间已删除" }
 }
 
 async function handleLeave(body: CommonBody): Promise<RequestRes<RoRes>> {
@@ -65,6 +114,7 @@ async function handleLeave(body: CommonBody): Promise<RequestRes<RoRes>> {
   if (room.participants.length === 1) {
     room = pausePlayer(room)
     room.participants = []
+    room.emptyStamp = Date.now()
     roomRepo.update(roomId, room)
     return { code: "0000" }
   }
@@ -90,7 +140,7 @@ async function handleHeartbeat(body: CommonBody): Promise<RequestRes<RoRes>> {
   me.heartbeatStamp = now
   me.nickName = nickName
   participants = participants.map(v => (v.nonce === clientId ? me : v))
-  participants = participants.filter(v => now - v.heartbeatStamp < 50 * 1000)
+  participants = participants.filter(v => now - v.heartbeatStamp < env.visitorOfflineTimeoutMs)
 
   roomRepo.update(roomId, { participants })
   return {
@@ -137,9 +187,9 @@ async function handleEnter(
     participants.push(me)
   }
 
-  participants = participants.filter(v => now - v.heartbeatStamp < 60 * 1000)
+  participants = participants.filter(v => now - v.heartbeatStamp < env.visitorOfflineTimeoutMs)
   await recordVisitor(body, ua, ip)
-  roomRepo.update(roomId, { participants })
+  roomRepo.update(roomId, { participants, emptyStamp: undefined })
 
   return {
     code: "0000",
@@ -169,7 +219,8 @@ async function handleCreate(
     participants: [],
     config: defaultRoomCfg,
     queue: body.roomData.queue,
-    isPersistent: Boolean(body.isPersistent)
+    isPersistent: Boolean(body.isPersistent),
+    roomName: sanitizeRoomName(body.roomName)
   }
   const roomId = roomRepo.add(room)
   if (body.roomData.pendingPlaylistImport) {
@@ -195,9 +246,15 @@ async function handleCreate(
       queue: room.queue,
       currentIndex: room.queue?.currentIndex,
       playMode: room.queue?.playMode,
-      isPersistent: room.isPersistent
+      isPersistent: room.isPersistent,
+      roomName: room.roomName
     }
   }
+}
+
+function sanitizeRoomName(value: unknown): string {
+  if (typeof value !== "string") return ""
+  return value.trim().slice(0, 30)
 }
 
 function stripQueueFromContent(content: ContentData): ContentData {
@@ -238,6 +295,7 @@ export function toRoRes(room: Room, guestId?: string, iamOwner?: "Y" | "N"): RoR
 
   return {
     roomId: room._id,
+    roomName: room.roomName,
     content: room.content,
     playStatus: room.playStatus,
     speedRate: room.speedRate,
@@ -276,14 +334,19 @@ function checkEntry(ctx: RequestContext): RequestRes<RoRes> | null {
   if (!body["x-pt-local-id"]) return { code: "E4000" }
 
   const operateType = body.operateType as OperateType | undefined
-  const oTypes: OperateType[] = ["CREATE", "ENTER", "HEARTBEAT", "LEAVE"]
+  const oTypes: OperateType[] = ["CREATE", "ENTER", "HEARTBEAT", "LEAVE", "SET_ROOM_NAME", "DELETE_ROOM"]
   if (!operateType || !oTypes.includes(operateType)) return { code: "E4000" }
   if (!body.nickName && operateType !== "CREATE") return { code: "E4000" }
 
-  const needsRoomId: OperateType[] = ["ENTER", "HEARTBEAT", "LEAVE"]
+  const needsRoomId: OperateType[] = ["ENTER", "HEARTBEAT", "LEAVE", "SET_ROOM_NAME", "DELETE_ROOM"]
   if (!body.roomId && needsRoomId.includes(operateType)) return { code: "E4000" }
+  if (operateType === "SET_ROOM_NAME" && !sanitizeRoomName(body.roomName)) return { code: "E4000" }
 
   if (operateType === "CREATE") {
+    const rawRoomName = body.roomName
+    if (typeof rawRoomName === "string" && rawRoomName.length > 0 && !sanitizeRoomName(rawRoomName)) {
+      return { code: "E4000", showMsg: "房间名称不能为空" }
+    }
     const roomData = body.roomData as ContentData | undefined
     if (!roomData) return { code: "E4000" }
     if (roomData.infoType !== "podcast") return { code: "E4000" }

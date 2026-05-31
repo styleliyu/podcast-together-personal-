@@ -9,12 +9,12 @@ import { setupWebSocket } from "./websocket"
 import { dbPath } from "./db"
 import { getUploadRoot, handleUploadAudio, handleUploadError, uploadMiddleware } from "./upload"
 import { cancelPlaylistImport } from "./playlistImport"
+import { env } from "./config/env"
 
 const app = express()
-const port = Number(process.env.PORT || 3001)
-const host = process.env.HOST || "127.0.0.1"
-const corsOrigin = process.env.CORS_ORIGIN || "*"
-const roomClockIntervalMs = Number(process.env.ROOM_CLOCK_INTERVAL_MS || 30000)
+const port = env.port
+const host = env.host
+const corsOrigin = env.corsOrigin
 
 app.use(cors({ origin: corsOrigin === "*" ? true : corsOrigin }))
 app.use(express.json({ limit: "1mb" }))
@@ -80,7 +80,7 @@ app.use("/api", (_req, res) => {
 
 const server = http.createServer(app)
 setupWebSocket(server)
-startRoomClock(roomClockIntervalMs)
+startRoomClock(env.roomCleanupIntervalMs)
 
 server.listen(port, host, () => {
   console.log(`podcast-together API listening on http://${host}:${port}`)

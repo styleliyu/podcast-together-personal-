@@ -12,6 +12,7 @@ const inputValue = ref<string>("")
 const inputEl = ref<HTMLInputElement | null>(null)
 const fileEl = ref<HTMLInputElement | null>(null)
 const isPersistent = ref(false)
+const roomName = ref("")
 
 const hasQuery = ref(false)
 // 监听 query 的变化，更新 hasQuery
@@ -26,19 +27,24 @@ const canSubmit = computed(() => {
   let val = inputValue.value
   let v = val.trim()
   if(v.length < 10) return false
+  if(isPersistent.value && roomName.value.length > 0 && !roomName.value.trim()) return false
   const reg = /^http(s)?:\/\/[\w\.-]*\w{1,32}\.\w{2,6}\S*$/g
   return reg.test(val)
+})
+
+const normalizedRoomName = computed(() => {
+  return isPersistent.value ? roomName.value.trim().slice(0, 30) : ""
 })
 
 const onInputConfirm = () => {
   inputEl?.value?.blur()
   if(!canSubmit.value) return
-  cp.finishInput(inputValue.value, router, route, isPersistent.value)
+  cp.finishInput(inputValue.value, router, route, isPersistent.value, normalizedRoomName.value)
 }
 
 const onTapConfirm = () => {
   if(!canSubmit.value) return
-  cp.finishInput(inputValue.value, router, route, isPersistent.value)
+  cp.finishInput(inputValue.value, router, route, isPersistent.value, normalizedRoomName.value)
   inputEl?.value?.blur()
 }
 
@@ -49,7 +55,7 @@ const onTapUpload = () => {
 const onFileChange = () => {
   const files = Array.from(fileEl.value?.files || [])
   if(!files.length) return
-  cp.finishUpload(files, router, route, isPersistent.value)
+  cp.finishUpload(files, router, route, isPersistent.value, normalizedRoomName.value)
   if(fileEl.value) fileEl.value.value = ""
 }
 
@@ -91,6 +97,14 @@ onActivated(() => {
         <input v-model="isPersistent" type="checkbox" />
         <span>常驻房间</span>
       </label>
+      <input
+        v-if="isPersistent"
+        v-model="roomName"
+        class="room-name-input"
+        placeholder="常驻房间名称，可不填"
+        maxlength="30"
+        type="text"
+      />
       <input
         ref="fileEl"
         class="file-input"
@@ -183,6 +197,13 @@ onActivated(() => {
 
   .file-input {
     display: none;
+  }
+
+  .room-name-input {
+    margin-top: 14px;
+    font-size: 18px;
+    line-height: 28px;
+    padding-bottom: 10px;
   }
 
 }

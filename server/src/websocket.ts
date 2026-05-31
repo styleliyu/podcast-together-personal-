@@ -26,16 +26,24 @@ import type {
 
 const LAZY_RESOLVE_ROOM_INTERVAL_MS = 2000
 const LAZY_RESOLVE_FAIL_COOLDOWN_MS = 30 * 1000
+const STALE_PAUSE_AFTER_QUEUE_SWITCH_MS = 2500
 const defaultRoomCfg: RoomConfig = {
   everyoneCanOperatePlayer: "Y"
 }
 
 const lazyResolveRoomStamps = new Map<string, number>()
 const lazyResolveFailCache = new Map<string, number>()
+const queueSwitchPauseGuards = new Map<string, { guestId: string; until: number }>()
 
 export function setupWebSocket(server: HttpServer): WebSocketServer {
   const wss = new WebSocketServer({ noServer: true })
-  setPlaylistImportBroadcaster(broadcaster.broadcastToRoom)
+  setPlaylistImportBroadcaster((roomId, data) => {
+    if (data.responseType === "PLAYLIST_IMPORT_PROGRESS" && data.playlistImportProgress) {
+      broadcaster.broadcastPlaylistImportProgress(roomId, data.playlistImportProgress)
+      return
+    }
+    broadcaster.broadcastToRoom(roomId, data)
+  })
 
   server.on("upgrade", (request, socket, head) => {
     const url = new URL(request.url || "", `http://${request.headers.host}`)
@@ -115,6 +123,7 @@ async function handleFirstSend(socket: PtWebSocket, req: ReqBase): Promise<void>
     responseType: "NEW_STATUS",
     roomStatus: {
       roomId: req.roomId,
+      roomName: room.roomName,
       content: room.content,
       playStatus: room.playStatus,
       speedRate: room.speedRate,
@@ -150,14 +159,12 @@ async function handleSetPlayer(socket: PtWebSocket, req: ReqOperatePlayer): Prom
     return
   }
 
+  if (shouldIgnoreStalePauseAfterQueueSwitch(req.roomId, guestId, req.playStatus)) return
   if (shouldIgnoreRapidSameOperator(room, guestId, req["x-pt-stamp"])) return
 
   const { patch, roomStatus } = buildPlaybackUpdate({ room, roomId: req.roomId, req, guestId, isOwner, defaultRoomCfg })
   roomRepo.update(req.roomId, patch)
-  broadcaster.broadcastToRoom(req.roomId, {
-    responseType: "NEW_STATUS",
-    roomStatus
-  })
+  broadcaster.broadcastRoomStatus(req.roomId, roomStatus)
 }
 
 async function handleSetQueueIndex(socket: PtWebSocket, req: ReqSetQueueIndex): Promise<void> {
@@ -177,7 +184,7 @@ async function handleAdvanceQueue(socket: PtWebSocket, req: ReqAdvanceQueue): Pr
     return
   }
 
-  await switchQueueIndex(req.roomId, room, nextIndex, req["x-pt-stamp"], req["x-pt-local-id"], req.direction === "auto" ? "PLAYING" : room.playStatus)
+  await switchQueueIndex(req.roomId, room, nextIndex, req["x-pt-stamp"], req["x-pt-local-id"], "PLAYING")
 }
 
 async function handleSetPlayMode(socket: PtWebSocket, req: ReqSetPlayMode): Promise<void> {
@@ -188,10 +195,7 @@ async function handleSetPlayMode(socket: PtWebSocket, req: ReqSetPlayMode): Prom
 
   const queue: RoomQueue = { ...room.queue, playMode: req.playMode }
   roomRepo.update(req.roomId, { queue, operator: guestId })
-  broadcaster.broadcastToRoom(req.roomId, {
-    responseType: "NEW_STATUS",
-    roomStatus: buildQueueRoomStatus(req.roomId, room, queue, guestId)
-  })
+  broadcaster.broadcastRoomStatus(req.roomId, buildQueueRoomStatus(req.roomId, room, queue, guestId))
 }
 
 async function handleAppendQueue(socket: PtWebSocket, req: ReqAppendQueue): Promise<void> {
@@ -208,10 +212,7 @@ async function handleAppendQueue(socket: PtWebSocket, req: ReqAppendQueue): Prom
     : { items: [contentToQueueItem(room.content), ...incoming], currentIndex: 0, playMode: "sequence" }
 
   roomRepo.update(req.roomId, { queue, operator: guestId })
-  broadcaster.broadcastToRoom(req.roomId, {
-    responseType: "NEW_STATUS",
-    roomStatus: buildQueueRoomStatus(req.roomId, room, queue, guestId)
-  })
+  broadcaster.broadcastRoomStatus(req.roomId, buildQueueRoomStatus(req.roomId, room, queue, guestId))
 }
 
 async function handleImportPlaylist(socket: PtWebSocket, req: ReqImportPlaylist): Promise<void> {
@@ -236,19 +237,16 @@ async function pauseQueueAtEnd(roomId: string, room: Room, req: ReqAdvanceQueue)
     operateStamp: req["x-pt-stamp"],
     operator: guestId
   })
-  broadcaster.broadcastToRoom(roomId, {
-    responseType: "NEW_STATUS",
-    roomStatus: {
-      roomId,
-      playStatus: "PAUSED",
-      speedRate: room.speedRate,
-      contentStamp: 0,
-      operateStamp: req["x-pt-stamp"],
-      operator: guestId,
-      queue: room.queue,
-      currentIndex: room.queue?.currentIndex,
-      playMode: room.queue?.playMode
-    }
+  broadcaster.broadcastRoomStatus(roomId, {
+    roomId,
+    playStatus: "PAUSED",
+    speedRate: room.speedRate,
+    contentStamp: 0,
+    operateStamp: req["x-pt-stamp"],
+    operator: guestId,
+    queue: room.queue,
+    currentIndex: room.queue?.currentIndex,
+    playMode: room.queue?.playMode
   })
 }
 
@@ -278,6 +276,7 @@ async function switchQueueIndex(
   }
   const cleanContent: ContentData = { ...content }
   delete cleanContent.queue
+  rememberQueueSwitchPauseGuard(roomId, guestId)
 
   roomRepo.update(roomId, {
     content: cleanContent,
@@ -287,20 +286,17 @@ async function switchQueueIndex(
     operateStamp: stamp,
     operator: guestId
   })
-  broadcaster.broadcastToRoom(roomId, {
-    responseType: "NEW_STATUS",
-    roomStatus: {
-      roomId,
-      content: cleanContent,
-      playStatus: nextPlayStatus,
-      speedRate: room.speedRate,
-      contentStamp: 0,
-      operateStamp: stamp,
-      operator: guestId,
-      queue,
-      currentIndex: queue.currentIndex,
-      playMode: queue.playMode
-    }
+  broadcaster.broadcastRoomStatus(roomId, {
+    roomId,
+    content: cleanContent,
+    playStatus: nextPlayStatus,
+    speedRate: room.speedRate,
+    contentStamp: 0,
+    operateStamp: stamp,
+    operator: guestId,
+    queue,
+    currentIndex: queue.currentIndex,
+    playMode: queue.playMode
   })
 }
 
@@ -387,4 +383,22 @@ function getOperatorGuestId(clientId: string, room?: Room): string | undefined {
 
 function isSpeedRate(value: string): value is SpeedRate {
   return ["0.8", "1", "1.2", "1.5", "1.7"].includes(value)
+}
+
+function rememberQueueSwitchPauseGuard(roomId: string, guestId: string): void {
+  queueSwitchPauseGuards.set(roomId, {
+    guestId,
+    until: Date.now() + STALE_PAUSE_AFTER_QUEUE_SWITCH_MS
+  })
+}
+
+function shouldIgnoreStalePauseAfterQueueSwitch(roomId: string, guestId: string, playStatus: string): boolean {
+  if (playStatus !== "PAUSED") return false
+  const guard = queueSwitchPauseGuards.get(roomId)
+  if (!guard) return false
+  if (Date.now() > guard.until) {
+    queueSwitchPauseGuards.delete(roomId)
+    return false
+  }
+  return guard.guestId === guestId
 }

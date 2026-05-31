@@ -5,6 +5,8 @@ import type { ContentData, PlaylistImportProgress, QueueItem, RequestRes, ResToF
 const IMPORT_DELAY_MIN_MS = 800
 const IMPORT_DELAY_MAX_MS = 1500
 
+// Playlist import owns progressive parsing, cancellation, progress broadcasts,
+// and the future failedTracks detail surface. It must never append to deleted rooms.
 interface PlaylistImportJob {
   roomId: string
   link: string
@@ -121,6 +123,15 @@ export function cancelPlaylistImport(roomId: string): RequestRes<PlaylistImportP
   }
 }
 
+export function stopPlaylistImportForRoom(roomId: string): boolean {
+  const job = activeJobs.get(roomId)
+  if (!job) return false
+  job.cancelled = true
+  job.running = false
+  activeJobs.delete(roomId)
+  return true
+}
+
 export function getPlaylistImportProgress(roomId: string): PlaylistImportProgress | undefined {
   const job = activeJobs.get(roomId)
   if (!job) return undefined
@@ -146,10 +157,12 @@ async function runPlaylistImport(job: PlaylistImportJob, items: QueueItem[]): Pr
 
       await sleep(randomDelay())
       if (job.cancelled || !job.running) break
+      if (!isRoomImportable(job.roomId)) break
 
       try {
         const content = await resolveQueueItemContent(item)
         if (job.cancelled || !job.running) break
+        if (!isRoomImportable(job.roomId)) break
 
         job.parsedCount += 1
         if (!content?.audioUrl) {
@@ -160,6 +173,7 @@ async function runPlaylistImport(job: PlaylistImportJob, items: QueueItem[]): Pr
 
         const playable = toPlayableQueueItem(item, content)
         const appended = appendQueueItem(job.roomId, playable)
+        if (!isRoomImportable(job.roomId)) break
         if (appended) {
           job.importedIds.add(item.id)
           job.successCount += 1
@@ -178,7 +192,7 @@ async function runPlaylistImport(job: PlaylistImportJob, items: QueueItem[]): Pr
       }
     }
 
-    if (!job.cancelled) {
+    if (!job.cancelled && isRoomImportable(job.roomId)) {
       job.running = false
       broadcastProgress(job, "completed", `导入完成：成功 ${job.successCount} 首，失败 ${job.failedCount} 首`)
     }
@@ -225,10 +239,20 @@ function broadcastQueue(roomId: string, room: Room): void {
 }
 
 function broadcastProgress(job: PlaylistImportJob, status: PlaylistImportProgress["status"], message: string): void {
+  if (!isRoomImportable(job.roomId)) {
+    job.cancelled = true
+    job.running = false
+    return
+  }
   broadcastToRoom(job.roomId, {
     responseType: "PLAYLIST_IMPORT_PROGRESS",
     playlistImportProgress: toProgress(job, status, message)
   })
+}
+
+function isRoomImportable(roomId: string): boolean {
+  const room = roomRepo.get(roomId)
+  return Boolean(room && room.oState === "OK")
 }
 
 function toProgress(job: PlaylistImportJob, status: PlaylistImportProgress["status"], message: string): PlaylistImportProgress {

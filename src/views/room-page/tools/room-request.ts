@@ -34,3 +34,15 @@ export const request_cancel_playlist_import = async(roomId: string): Promise<Req
   let res = await rq.request(api.PLAYLIST_IMPORT_CANCEL, { roomId })
   return res
 }
+
+export const request_set_room_name = async(roomId: string, nickName: string, roomName: string): Promise<RequestRes<RoRes>> => {
+  let param = { operateType: "SET_ROOM_NAME", roomId, nickName, roomName }
+  let res = await rq.request<RoRes>(url, param)
+  return res
+}
+
+export const request_delete_room = async(roomId: string, nickName: string): Promise<RequestRes<RoRes>> => {
+  let param = { operateType: "DELETE_ROOM", roomId, nickName }
+  let res = await rq.request<RoRes>(url, param)
+  return res
+}

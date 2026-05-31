@@ -77,8 +77,30 @@ export interface PlaylistImportProgress {
   message: string
 }
 
+export interface LocalImportFailure {
+  filename: string
+  reason: string
+}
+
+export interface LocalUploadMetadata {
+  filename: string
+  originalName: string
+  title: string
+  artist?: string
+  album?: string
+  detectedExt: string
+  mime?: string
+}
+
+export interface UploadAudioData {
+  content: ContentData
+  importedCount: number
+  failures: LocalImportFailure[]
+}
+
 export interface RoRes {
   roomId: string
+  roomName?: string
   content: ContentData
   playStatus: "PLAYING" | "PAUSED"
   speedRate: "1"

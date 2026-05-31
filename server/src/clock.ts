@@ -1,4 +1,5 @@
 import { roomRepo } from "./db"
+import { env } from "./config/env"
 import type { Room } from "./types"
 
 export function startRoomClock(intervalMs: number): NodeJS.Timeout {
@@ -15,39 +16,64 @@ export function startRoomClock(intervalMs: number): NodeJS.Timeout {
 }
 
 async function handleRoomClock(): Promise<void> {
-  const rooms = roomRepo.findPlayingRooms()
+  const rooms = roomRepo.findActiveRooms()
   if (rooms.length < 1) return
 
   const now = Date.now()
   for (const room of rooms) {
     let participants = room.participants || []
+    let lastHeartbeat = room.createStamp
 
     if (participants.length < 1) {
-      roomRepo.update(room._id, { playStatus: "PAUSED" })
+      handleEmptyRoom(room, now)
       continue
     }
 
     const oldLen = participants.length
-    let lastHeartbeat = 1
-    const sec50Ago = now - 50 * 1000
+    const offlineBefore = now - env.visitorOfflineTimeoutMs
     participants = participants.filter(person => {
       if (person.heartbeatStamp > lastHeartbeat) lastHeartbeat = person.heartbeatStamp
-      return person.heartbeatStamp > sec50Ago
+      return person.heartbeatStamp > offlineBefore
     })
 
     if (participants.length === oldLen) continue
 
     const patch: Partial<Room> = { participants }
     if (participants.length === 0) {
-      let speedRateNum = Number(room.speedRate)
-      if (Number.isNaN(speedRateNum) || speedRateNum >= 1.71) speedRateNum = 1
-      const diffMilli = lastHeartbeat - room.operateStamp
-      patch.playStatus = "PAUSED"
-      patch.contentStamp = room.contentStamp + diffMilli * speedRateNum
-      patch.operateStamp = now
-      patch.operator = ""
+      patch.emptyStamp = room.emptyStamp || lastHeartbeat || now
+      if (room.playStatus === "PLAYING" && now - lastHeartbeat >= env.roomIdlePauseTimeoutMs) {
+        Object.assign(patch, buildPausePatch(room, lastHeartbeat, now))
+      }
     }
 
     roomRepo.update(room._id, patch)
+  }
+}
+
+function handleEmptyRoom(room: Room, now: number): void {
+  const emptyStamp = room.emptyStamp || now
+  const patch: Partial<Room> = {}
+
+  if (!room.emptyStamp) patch.emptyStamp = emptyStamp
+  if (room.playStatus === "PLAYING" && now - emptyStamp >= env.roomIdlePauseTimeoutMs) {
+    Object.assign(patch, buildPausePatch(room, emptyStamp, now))
+  }
+  if (!room.isPersistent && now - emptyStamp >= env.tempRoomDeleteAfterEmptyMs) {
+    patch.oState = "DELETED"
+    patch.participants = []
+  }
+
+  if (Object.keys(patch).length > 0) roomRepo.update(room._id, patch)
+}
+
+function buildPausePatch(room: Room, lastHeartbeat: number, now: number): Partial<Room> {
+  let speedRateNum = Number(room.speedRate)
+  if (Number.isNaN(speedRateNum) || speedRateNum >= 1.71) speedRateNum = 1
+  const diffMilli = Math.max(0, lastHeartbeat - room.operateStamp)
+  return {
+    playStatus: "PAUSED",
+    contentStamp: room.contentStamp + diffMilli * speedRateNum,
+    operateStamp: now,
+    operator: ""
   }
 }

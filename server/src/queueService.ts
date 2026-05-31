@@ -1,5 +1,7 @@
 import type { ContentData, PlayMode, QueueItem, Room, RoomConfig, RoomQueue, RoomStatus } from "./types"
 
+// Queue service owns queue shape and navigation rules. Future currentItemId,
+// drag sort, delete, skip, and play-next logic should be normalized here.
 export function canOperateQueue(room: Room, clientId: string, defaultRoomCfg: RoomConfig): boolean {
   const roomCfg = room.config || defaultRoomCfg
   const isOwner = room.owner === clientId

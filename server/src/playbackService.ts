@@ -2,6 +2,8 @@ import type { ReqOperatePlayer, Room, RoomConfig, RoomStatus } from "./types"
 
 export const MIN_DURATION_FOR_A_PERSON = 250
 
+// Playback service owns play/pause/seek timestamps and speedRate reporting.
+// It should not mutate queue order or room metadata.
 export function canOperatePlayer(room: Room, clientId: string, defaultRoomCfg: RoomConfig): boolean {
   const roomCfg = room.config || defaultRoomCfg
   const isOwner = room.owner === clientId

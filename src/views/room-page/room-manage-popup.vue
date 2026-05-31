@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import PtSwitch from '../../components/pt-switch.vue';
 import PtButton from '../../components/pt-button.vue';
+import { ref, watch } from 'vue';
 
 const props = defineProps({
   show: {
@@ -10,14 +11,36 @@ const props = defineProps({
   everyoneCanOperatePlayer: {
     type: String,
     default: "",
+  },
+  roomName: {
+    type: String,
+    default: "",
+  },
+  isPersistent: {
+    type: Boolean,
+    default: false,
+  },
+  amIOwner: {
+    type: Boolean,
+    default: false,
   }
 })
-const emit = defineEmits(["tapmask", "everyoneCanOperatePlayerChange"])
+const emit = defineEmits(["tapmask", "everyoneCanOperatePlayerChange", "roomNameChange", "deleteRoom"])
+const roomNameDraft = ref(props.roomName)
+watch(() => props.roomName, (val) => {
+  roomNameDraft.value = val
+})
 const onTapMask = () => {
   emit("tapmask", { msg: "点了蒙层" })
 }
 const onEveryoneCanOperatePlayerChange = (opt: { checked: boolean }) => {
   emit("everyoneCanOperatePlayerChange", opt)
+}
+const onSaveRoomName = () => {
+  emit("roomNameChange", roomNameDraft.value)
+}
+const onDeleteRoom = () => {
+  emit("deleteRoom")
 }
 
 const doNothing = (e: Event) => {
@@ -44,6 +67,18 @@ const doNothing = (e: Event) => {
             @change="onEveryoneCanOperatePlayerChange"
           ></pt-switch>
         </div>
+      </div>
+      <div v-if="props.isPersistent" class="rmp-room-name">
+        <div class="rmpb-hd">
+          <span>常驻房间名称</span>
+        </div>
+        <div class="rmp-room-name__body">
+          <input v-model="roomNameDraft" maxlength="30" placeholder="输入房间名称" />
+          <button v-if="props.amIOwner" @click="onSaveRoomName">保存</button>
+        </div>
+      </div>
+      <div v-if="props.isPersistent && props.amIOwner" class="rmp-danger">
+        <button @click="onDeleteRoom">删除常驻房间</button>
       </div>
       <div class="rmp-btn">
         <pt-button text="关闭" type="other" @click="onTapMask"></pt-button>
@@ -129,6 +164,49 @@ const doNothing = (e: Event) => {
   min-width: 140px;
   padding: 30px 0 6px;
   margin: auto;
+}
+
+.rmp-room-name {
+  padding: 10px 0 12px;
+}
+
+.rmp-room-name__body {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.rmp-room-name__body input {
+  flex: 1;
+  min-width: 0;
+  height: 38px;
+  border: 1px solid var(--card-color);
+  border-radius: 6px;
+  padding: 0 12px;
+  box-sizing: border-box;
+  background: var(--card-color);
+  color: var(--text-color);
+  font-size: var(--desc-font);
+}
+
+.rmp-room-name__body button,
+.rmp-danger button {
+  border: 0;
+  border-radius: 6px;
+  height: 38px;
+  padding: 0 14px;
+  cursor: pointer;
+  background: var(--other-btn-bg);
+  color: var(--other-btn-text);
+}
+
+.rmp-danger {
+  padding-top: 8px;
+}
+
+.rmp-danger button {
+  background: #b3261e;
+  color: #fff;
 }
 
 </style>

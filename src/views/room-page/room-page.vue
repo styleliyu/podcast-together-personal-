@@ -24,6 +24,9 @@ const {
   onPlayModeChange,
   onAppendQueueByLink,
   onCancelPlaylistImport,
+  onTogglePlaylistImportPanel,
+  onRoomNameChange,
+  onDeleteRoom,
 } = useRoomPage()
 const state = toRef(pageData, "state")
 const { 
@@ -59,12 +62,31 @@ const playModeText = computed(() => {
   return "顺序"
 })
 
+const roomDisplayName = computed(() => {
+  return pageData.roomName?.trim() || `一起听房间 ${pageData.roomId}`
+})
+
 const playlistImportStatusText = computed(() => {
   const status = pageData.playlistImportProgress?.status
   if(status === "completed") return "已完成"
   if(status === "cancelled") return "已取消"
   if(status === "failed") return "导入失败"
   return "正在导入"
+})
+
+const playlistImportSummary = computed(() => {
+  const progress = pageData.playlistImportProgress
+  if(!progress) return pageData.playlistImportMessage || ""
+  if(progress.status === "completed") {
+    return `导入完成：成功 ${progress.addedCount || 0} 首，失败 ${progress.failedCount || 0} 首`
+  }
+  if(progress.status === "cancelled") {
+    return `已取消：已加入 ${progress.addedCount || 0} 首，失败 ${progress.failedCount || 0} 首`
+  }
+  if(progress.status === "failed") {
+    return `导入失败：已加入 ${progress.addedCount || 0} 首，失败 ${progress.failedCount || 0} 首`
+  }
+  return `导入中：已加入 ${progress.addedCount || 0} 首，已解析 ${progress.parsedCount || 0}/${progress.total || 0}，失败 ${progress.failedCount || 0} 首`
 })
 
 const showPlaylistImportPanel = computed(() => {
@@ -74,6 +96,19 @@ const showPlaylistImportPanel = computed(() => {
 const canCancelPlaylistImport = computed(() => {
   const status = pageData.playlistImportProgress?.status
   return status === "started" || status === "progress"
+})
+
+const showPlaylistImportDetails = computed(() => {
+  return showPlaylistImportPanel.value && !pageData.playlistImportCollapsed
+})
+
+const queueCurrentNumber = computed(() => {
+  if(!pageData.queue?.items?.length) return 0
+  return Math.min((pageData.queue.currentIndex || 0) + 1, pageData.queue.items.length)
+})
+
+const queueTotalCount = computed(() => {
+  return pageData.queue?.items?.length || 0
 })
 
 const onTapShowMore = () => {
@@ -110,6 +145,10 @@ const onTapShowMore = () => {
     <!-- 正常显示 -->
     <div v-show="state === 3" class="page-container">
 
+      <div class="room-header">
+        <h1>{{ roomDisplayName }}</h1>
+      </div>
+
       <!-- 播放器 -->
       <div ref="playerEl" class="rp-player"></div>
 
@@ -117,8 +156,7 @@ const onTapShowMore = () => {
         <div class="queue-head">
           <div>
             <h2>播放队列</h2>
-            <p>{{ (pageData.queue.currentIndex || 0) + 1 }} / {{ pageData.queue.items.length }}</p>
-            <p v-if="pageData.playlistImportMessage" class="queue-import-message">{{ pageData.playlistImportMessage }}</p>
+            <p>{{ queueCurrentNumber }} / {{ queueTotalCount }}</p>
           </div>
           <div class="queue-actions">
             <button @click="onAppendQueueByLink">添加歌曲/歌单</button>
@@ -129,17 +167,21 @@ const onTapShowMore = () => {
         </div>
         <div v-if="showPlaylistImportPanel" class="playlist-import-panel">
           <div class="playlist-import-panel__head">
-            <div>
+            <button class="playlist-import-panel__toggle" @click="onTogglePlaylistImportPanel">
+              {{ pageData.playlistImportCollapsed ? '展开' : '收起' }}
+            </button>
+            <div class="playlist-import-panel__summary">
               <h3>歌单导入</h3>
-              <p>{{ pageData.playlistImportMessage }}</p>
+              <p>{{ playlistImportSummary }}</p>
             </div>
             <button
               v-if="canCancelPlaylistImport"
+              class="playlist-import-panel__cancel"
               :disabled="pageData.cancellingPlaylistImport"
               @click="onCancelPlaylistImport"
             >{{ pageData.cancellingPlaylistImport ? '取消中...' : '取消导入' }}</button>
           </div>
-          <div class="playlist-import-panel__grid">
+          <div v-if="showPlaylistImportDetails" class="playlist-import-panel__grid">
             <span>状态：{{ playlistImportStatusText }}</span>
             <span>已加入：{{ pageData.playlistImportProgress?.addedCount || 0 }} 首</span>
             <span>已解析：{{ pageData.playlistImportProgress?.parsedCount || 0 }} / {{ pageData.playlistImportProgress?.total || 0 }}</span>
@@ -257,8 +299,13 @@ const onTapShowMore = () => {
   <RoomManagePopup 
     :show="showManagePopup" 
     :everyoneCanOperatePlayer="pageData.everyoneCanOperatePlayer"
+    :roomName="pageData.roomName || ''"
+    :isPersistent="Boolean(pageData.isPersistent)"
+    :amIOwner="pageData.amIOwner"
     @tapmask="onTapManageMask"
     @everyoneCanOperatePlayerChange="onEveryoneCanOperatePlayerChange"
+    @roomNameChange="onRoomNameChange"
+    @deleteRoom="onDeleteRoom"
   ></RoomManagePopup>
   
 </template>
@@ -349,6 +396,19 @@ const onTapShowMore = () => {
   align-items: flex-start;
   text-align: left;
   max-width: 700px;
+
+  .room-header {
+    width: 100%;
+    margin-bottom: 18px;
+
+    h1 {
+      margin: 0;
+      color: var(--text-color);
+      font-size: 24px;
+      line-height: 34px;
+      word-break: break-word;
+    }
+  }
   
   .rp-player {
     width: 100%;
@@ -452,6 +512,19 @@ const onTapShowMore = () => {
     justify-content: space-between;
     gap: 12px;
     align-items: flex-start;
+  }
+
+  .playlist-import-panel__summary {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .playlist-import-panel__toggle {
+    flex: 0 0 auto;
+  }
+
+  .playlist-import-panel__cancel {
+    flex: 0 0 auto;
   }
 
   .playlist-import-panel__grid {
@@ -639,6 +712,10 @@ const onTapShowMore = () => {
       justify-content: flex-start;
     }
 
+    .playlist-import-panel__head {
+      flex-wrap: wrap;
+    }
+
     .queue-item {
       grid-template-columns: 30px minmax(0, 1fr);
     }
@@ -818,6 +895,21 @@ const onTapShowMore = () => {
 .shk-bar_wrap {
   height: 14px;
   cursor: pointer;
+}
+
+.rp-player .shk {
+  padding-bottom: 26px;
+}
+
+.rp-player .shk-bar_wrap {
+  top: auto !important;
+  bottom: 0;
+  padding: 8px 0;
+}
+
+.rp-player .shk-display {
+  top: auto !important;
+  bottom: -18px;
 }
 
 .shk-bar {

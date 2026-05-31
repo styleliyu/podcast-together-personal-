@@ -7,10 +7,10 @@ import { parseBlob as metaParseBlob } from 'music-metadata-browser';
 const MagicHeader = [0x69, 0x66, 0x6d, 0x74];
 const MagicHeader2 = [0xfe, 0xfe, 0xfe, 0xfe];
 const FileTypeMap: { [key: string]: string } = {
-  ' WAV': '.wav',
-  FLAC: '.flac',
-  ' MP3': '.mp3',
-  ' A4M': '.m4a',
+  ' WAV': 'wav',
+  FLAC: 'flac',
+  ' MP3': 'mp3',
+  ' A4M': 'm4a',
 };
 
 export async function Decrypt(file: File, raw_filename: string, raw_ext: string): Promise<DecryptResult> {

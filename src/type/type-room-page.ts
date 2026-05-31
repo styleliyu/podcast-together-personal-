@@ -30,6 +30,8 @@ export interface PageParticipant {
 export interface PageData {
   state: PageState
   roomId: string,
+  roomName?: string,
+  isPersistent?: boolean,
   content?: ContentData,
   participants: PageParticipant[],
   showMoreBox: boolean,
@@ -38,6 +40,7 @@ export interface PageData {
   queue?: RoomQueue
   playlistImportMessage?: string
   playlistImportProgress?: PlaylistImportProgress
+  playlistImportCollapsed: boolean
   cancellingPlaylistImport: boolean
 }
 
@@ -47,6 +50,7 @@ export type PlayStatus = "PLAYING" | "PAUSED"
 
 export interface RoomStatus {
   roomId: string
+  roomName?: string
   playStatus: PlayStatus
   speedRate: SpeedRate
   operator: string
@@ -60,8 +64,13 @@ export interface RoomStatus {
 }
 
 export interface WsMsgRes {
-  responseType: "CONNECTED" | "NEW_STATUS" | "HEARTBEAT" | "PLAYLIST_IMPORT_PROGRESS"
+  responseType: "CONNECTED" | "NEW_STATUS" | "HEARTBEAT" | "PLAYLIST_IMPORT_PROGRESS" | "ROOM_INFO"
   roomStatus?: RoomStatus
+  roomInfo?: {
+    roomId: string
+    roomName?: string
+    deleted?: boolean
+  }
   playlistImportProgress?: PlaylistImportProgress
 }
 

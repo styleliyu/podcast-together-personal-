@@ -1,6 +1,6 @@
 import { PtRouter, VueRoute } from "../../routes/pt-router"
 import time from "../../utils/time"
-import { ContentData, RoRes } from "../../type"
+import { ContentData, LocalImportFailure, RoRes } from "../../type"
 import cui from "../../components/custom-ui"
 import { request_create, request_parse, request_upload_audio } from "./cp-request"
 import util from "../../utils/util"
@@ -26,14 +26,34 @@ const _showQueryErr = async (router: PtRouter) => {
   router.replace({ name: "create" })
 }
 
+const _showLocalImportErr = (content: string) => {
+  cui.hideLoading()
+  cui.showModal({
+    title: "本地文件导入失败",
+    content,
+    showCancel: false,
+  })
+}
+
+const _showPartialLocalImportErr = async (failures: LocalImportFailure[]) => {
+  if(!failures.length) return
+  const content = formatImportFailures(failures)
+  await cui.showModal({
+    title: "部分文件未导入",
+    content,
+    showCancel: false,
+  })
+}
+
 const _createRoom = async (
   roomData: ContentData, 
   router: PtRouter, 
   route: VueRoute,
   fromQuery: boolean = false,
   isPersistent: boolean = false,
+  roomName: string = "",
 ): Promise<void> => {
-  const res = await request_create(roomData, isPersistent)
+  const res = await request_create(roomData, isPersistent, roomName)
   cui.hideLoading()
 
   if(res?.code !== "0000") {
@@ -53,7 +73,7 @@ const _createRoom = async (
   router.replace({ name: "room", params: { roomId } })
 }
 
-const finishInput = async (link: string, router: PtRouter, route: VueRoute, isPersistent: boolean = false): Promise<void> => {
+const finishInput = async (link: string, router: PtRouter, route: VueRoute, isPersistent: boolean = false, roomName: string = ""): Promise<void> => {
   const now = time.getTime()
   if(lastIntoFinishInput + 500 > now) return
   lastIntoFinishInput = now
@@ -66,14 +86,16 @@ const finishInput = async (link: string, router: PtRouter, route: VueRoute, isPe
   }
 
   let contentData = res.data as ContentData
-  _createRoom(contentData, router, route, false, isPersistent)
+  _createRoom(contentData, router, route, false, isPersistent, roomName)
 }
 
-const finishUpload = async (files: File[], router: PtRouter, route: VueRoute, isPersistent: boolean = false): Promise<void> => {
+const finishUpload = async (files: File[], router: PtRouter, route: VueRoute, isPersistent: boolean = false, roomName: string = ""): Promise<void> => {
   if(!files.length) return
   const prepared = {
     files,
     decrypted: [] as Awaited<ReturnType<typeof prepareLocalMusicFilesForUpload>>["decrypted"],
+    metadata: [] as Awaited<ReturnType<typeof prepareLocalMusicFilesForUpload>>["metadata"],
+    failures: [] as Awaited<ReturnType<typeof prepareLocalMusicFilesForUpload>>["failures"],
   }
 
   try {
@@ -81,16 +103,35 @@ const finishUpload = async (files: File[], router: PtRouter, route: VueRoute, is
     const nextPrepared = await prepareLocalMusicFilesForUpload(files)
     prepared.files = nextPrepared.files
     prepared.decrypted = nextPrepared.decrypted
+    prepared.metadata = nextPrepared.metadata
+    prepared.failures = nextPrepared.failures
 
-    cui.showLoading({ title: "上传中.." })
-    const res = await request_upload_audio(prepared.files)
-    if(res?.code !== "0000") {
-      _showErr()
+    if(!prepared.files.length) {
+      _showLocalImportErr(formatImportFailures(prepared.failures) || "没有可导入的本地音频文件。")
       return
     }
 
-    let contentData = res.data as ContentData
-    _createRoom(contentData, router, route, false, isPersistent)
+    cui.showLoading({ title: "上传中.." })
+    const res = await request_upload_audio(prepared.files, prepared.metadata)
+    const uploadFailures = res.data?.failures || []
+    const failures = [...prepared.failures, ...uploadFailures]
+    if(res?.code !== "0000") {
+      _showLocalImportErr(res.showMsg || formatImportFailures(failures) || "本地音频上传失败，请确认文件格式后重试。")
+      return
+    }
+
+    const contentData = res.data?.content
+    if(!contentData?.audioUrl) {
+      _showLocalImportErr(formatImportFailures(failures) || "没有可导入的本地音频文件。")
+      return
+    }
+
+    if(failures.length) {
+      cui.hideLoading()
+      await _showPartialLocalImportErr(failures)
+      cui.showLoading({ title: "创建房间.." })
+    }
+    _createRoom(contentData, router, route, false, isPersistent, roomName)
   }
   catch(err) {
     cui.hideLoading()
@@ -104,6 +145,13 @@ const finishUpload = async (files: File[], router: PtRouter, route: VueRoute, is
   finally {
     prepared.decrypted.forEach(releaseDecryptedMusicFile)
   }
+}
+
+function formatImportFailures(failures: LocalImportFailure[]): string {
+  if(!failures.length) return ""
+  const visible = failures.slice(0, 5).map(item => `${item.filename}：${item.reason}`).join("\n")
+  const hidden = failures.length > 5 ? `\n还有 ${failures.length - 5} 个文件未导入。` : ""
+  return `${visible}${hidden}`
 }
 const getTargetLink = (route: VueRoute): string => {
   let list: string[] = []

@@ -1,5 +1,11 @@
 import WebSocket from "ws"
-import type { PtWebSocket, ResToFe } from "../types"
+import type { PlaylistImportProgress, PtWebSocket, ResToFe, RoomStatus } from "../types"
+
+interface RoomInfoPayload {
+  roomId: string
+  roomName?: string
+  deleted?: boolean
+}
 
 class WebSocketBroadcaster {
   private readonly sockets = new Set<PtWebSocket>()
@@ -21,6 +27,34 @@ class WebSocketBroadcaster {
     for (const socket of this.sockets) {
       if (socket.roomId === roomId) this.send(socket, data)
     }
+  }
+
+  broadcastRoomStatus(roomId: string, status: RoomStatus): void {
+    this.broadcastToRoom(roomId, {
+      responseType: "NEW_STATUS",
+      roomStatus: status
+    })
+  }
+
+  broadcastRoomInfo(roomId: string, info: RoomInfoPayload): void {
+    this.broadcastToRoom(roomId, {
+      responseType: "ROOM_INFO",
+      roomInfo: info
+    })
+  }
+
+  broadcastPlaylistImportProgress(roomId: string, progress: PlaylistImportProgress): void {
+    this.broadcastToRoom(roomId, {
+      responseType: "PLAYLIST_IMPORT_PROGRESS",
+      playlistImportProgress: progress
+    })
+  }
+
+  broadcastRoomDeleted(roomId: string): void {
+    this.broadcastToRoom(roomId, {
+      responseType: "ROOM_INFO",
+      roomInfo: { roomId, deleted: true }
+    })
   }
 }
 

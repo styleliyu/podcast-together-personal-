@@ -17,6 +17,10 @@ export const env = {
   databasePath: readString("DATABASE_PATH", "./data/podcast-together.db"),
   uploadDir: readString("UPLOAD_DIR", "./data/uploads"),
   roomClockIntervalMs: readNumber("ROOM_CLOCK_INTERVAL_MS", 30000),
+  roomCleanupIntervalMs: readNumber("ROOM_CLEANUP_INTERVAL_MS", 60 * 1000),
+  visitorOfflineTimeoutMs: readNumber("VISITOR_OFFLINE_TIMEOUT_MS", 30 * 60 * 1000),
+  roomIdlePauseTimeoutMs: readNumber("ROOM_IDLE_PAUSE_TIMEOUT_MS", 0),
+  tempRoomDeleteAfterEmptyMs: readNumber("TEMP_ROOM_DELETE_AFTER_EMPTY_MS", 60 * 60 * 1000),
   qqMusicCookie: readString("QQ_MUSIC_COOKIE", ""),
   qqMusicCookieFile: readString("QQ_MUSIC_COOKIE_FILE", "./data/qq-music-cookie.txt"),
   ximalaya: {

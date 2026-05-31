@@ -86,6 +86,27 @@ export interface PlaylistImportProgress {
   message: string
 }
 
+export interface LocalImportFailure {
+  filename: string
+  reason: string
+}
+
+export interface LocalUploadMetadata {
+  filename: string
+  originalName: string
+  title: string
+  artist?: string
+  album?: string
+  detectedExt: string
+  mime?: string
+}
+
+export interface UploadAudioData {
+  content: ContentData
+  importedCount: number
+  failures: LocalImportFailure[]
+}
+
 export interface RoomConfig {
   everyoneCanOperatePlayer: "Y" | "N"
 }
@@ -93,6 +114,7 @@ export interface RoomConfig {
 export interface Room {
   _id: string
   title?: string
+  roomName?: string
   content: ContentData
   oState: "OK" | "EXPIRED" | "DELETED"
   playStatus: PlayStatus
@@ -106,10 +128,12 @@ export interface Room {
   config?: RoomConfig
   queue?: RoomQueue
   isPersistent?: boolean
+  emptyStamp?: number
 }
 
 export interface RoRes {
   roomId: string
+  roomName?: string
   content: ContentData
   playStatus: PlayStatus
   speedRate: SpeedRate
@@ -141,6 +165,7 @@ export interface Visitor {
 
 export interface RoomStatus {
   roomId: string
+  roomName?: string
   playStatus: PlayStatus
   speedRate: SpeedRate
   operator: string
@@ -154,8 +179,13 @@ export interface RoomStatus {
 }
 
 export interface ResToFe {
-  responseType: "CONNECTED" | "NEW_STATUS" | "HEARTBEAT" | "PLAYLIST_IMPORT_PROGRESS"
+  responseType: "CONNECTED" | "NEW_STATUS" | "HEARTBEAT" | "PLAYLIST_IMPORT_PROGRESS" | "ROOM_INFO"
   roomStatus?: RoomStatus
+  roomInfo?: {
+    roomId: string
+    roomName?: string
+    deleted?: boolean
+  }
   playlistImportProgress?: PlaylistImportProgress
 }
 

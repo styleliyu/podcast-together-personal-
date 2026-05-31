@@ -90,6 +90,13 @@ export const roomRepo = {
       .prepare("SELECT id, data FROM rooms WHERE state = 'OK' AND play_status = 'PLAYING' ORDER BY create_stamp ASC")
       .all() as { id: string; data: string }[]
     return rows.map(toRoom).filter((room): room is Room => Boolean(room))
+  },
+
+  findActiveRooms(): Room[] {
+    const rows = db
+      .prepare("SELECT id, data FROM rooms WHERE state = 'OK' ORDER BY create_stamp ASC")
+      .all() as { id: string; data: string }[]
+    return rows.map(toRoom).filter((room): room is Room => Boolean(room))
   }
 }
 
