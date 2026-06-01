@@ -577,10 +577,13 @@ function shouldSuppressLocalPlaybackReport(): boolean {
 }
 
 function getPlayingTrackIdentity(content?: ContentData, queue?: RoomQueue): PlayingTrackIdentity {
-  const currentItem = queue?.items?.[queue.currentIndex]
+  const itemById = queue?.currentItemId
+    ? queue.items.find(item => item.id === queue.currentItemId)
+    : undefined
+  const currentItem = itemById || queue?.items?.[queue.currentIndex]
   const audioUrl = currentItem?.audioUrl || content?.audioUrl || ""
-  const id = currentItem?.id || `${content?.sourceType || "audio"}:${content?.linkUrl || audioUrl}`
-  return { id, audioUrl, hasStableId: Boolean(currentItem?.id) }
+  const id = queue?.currentItemId || currentItem?.id || `${content?.sourceType || "audio"}:${content?.linkUrl || audioUrl}`
+  return { id, audioUrl, hasStableId: Boolean(queue?.currentItemId || currentItem?.id) }
 }
 
 function isSamePlayingTrack(
@@ -616,6 +619,7 @@ function buildPlaybackSignature(status: RoomStatus, content?: ContentData, queue
 function isSameQueueItems(a?: RoomQueue, b?: RoomQueue): boolean {
   if(!a || !b) return a === b
   if(a.currentIndex !== b.currentIndex) return false
+  if((a.currentItemId || "") !== (b.currentItemId || "")) return false
   if(a.items.length !== b.items.length) return false
   return a.items.every((item, index) => {
     const next = b.items[index]
@@ -814,6 +818,7 @@ function heartbeat() {
       operateStamp: roRes.operateStamp,
       queue: roRes.queue,
       currentIndex: roRes.currentIndex,
+      currentItemId: roRes.currentItemId,
       playMode: roRes.playMode
     }
     if(roRes.everyoneCanOperatePlayer) {
@@ -921,6 +926,7 @@ async function resume() {
     operateStamp: roRes.operateStamp,
     queue: roRes.queue,
     currentIndex: roRes.currentIndex,
+    currentItemId: roRes.currentItemId,
     playMode: roRes.playMode,
     everyoneCanOperatePlayer: roRes.everyoneCanOperatePlayer
   }

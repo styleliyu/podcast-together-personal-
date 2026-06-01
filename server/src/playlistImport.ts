@@ -1,5 +1,6 @@
 import { roomRepo } from "./db"
 import { getPlaylistImportData, resolveQueueItemContent, toPlayableQueueItem } from "./music/musicAdapter"
+import { normalizeQueue, reconcileQueueCurrent } from "./queueService"
 import type { ContentData, FailedTrack, PlaylistImportProgress, QueueItem, RequestRes, ResToFe, Room, RoomQueue } from "./types"
 
 const IMPORT_DELAY_MIN_MS = 800
@@ -209,16 +210,12 @@ function appendQueueItem(roomId: string, item: QueueItem): boolean {
   const room = roomRepo.get(roomId)
   if (!room || room.oState !== "OK") return false
 
-  const baseQueue: RoomQueue = room.queue
-    ? room.queue
-    : { items: [contentToQueueItem(room.content)], currentIndex: 0, playMode: "sequence" }
+  const baseQueue: RoomQueue = normalizeQueue(room.queue)
+    || { items: [contentToQueueItem(room.content)], currentIndex: 0, playMode: "sequence" }
 
   if (baseQueue.items.some(existing => sameQueueItem(existing, item))) return false
 
-  const queue: RoomQueue = {
-    ...baseQueue,
-    items: [...baseQueue.items, item]
-  }
+  const queue = reconcileQueueCurrent(baseQueue, { ...baseQueue, items: [...baseQueue.items, item] })
 
   roomRepo.update(roomId, { queue })
   return true
@@ -237,6 +234,7 @@ function broadcastQueue(roomId: string, room: Room): void {
       operator: room.operator,
       queue: room.queue,
       currentIndex: room.queue?.currentIndex,
+      currentItemId: room.queue?.currentItemId,
       playMode: room.queue?.playMode
     }
   })

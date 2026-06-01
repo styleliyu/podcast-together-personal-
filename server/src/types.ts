@@ -65,6 +65,7 @@ export interface QueueItem {
 export interface RoomQueue {
   items: QueueItem[]
   currentIndex: number
+  currentItemId?: string
   playMode: PlayMode
 }
 
@@ -155,6 +156,7 @@ export interface RoRes {
   everyoneCanOperatePlayer?: "Y" | "N"
   queue?: RoomQueue
   currentIndex?: number
+  currentItemId?: string
   playMode?: PlayMode
   isPersistent?: boolean
 }
@@ -184,6 +186,7 @@ export interface RoomStatus {
   content?: ContentData
   queue?: RoomQueue
   currentIndex?: number
+  currentItemId?: string
   playMode?: PlayMode
 }
 

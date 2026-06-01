@@ -9,18 +9,58 @@ export function canOperateQueue(room: Room, clientId: string, defaultRoomCfg: Ro
 }
 
 export function getNextQueueIndex(queue: RoomQueue, direction: "next" | "prev" | "auto"): number {
-  if (queue.items.length < 1) return -1
-  if (queue.playMode === "single" && direction === "auto") return queue.currentIndex
-  if (queue.playMode === "shuffle" && direction !== "prev") {
-    if (queue.items.length === 1) return queue.currentIndex
-    let next = queue.currentIndex
-    for (let i = 0; i < 8 && next === queue.currentIndex; i++) next = Math.floor(Math.random() * queue.items.length)
-    return next === queue.currentIndex ? (queue.currentIndex + 1) % queue.items.length : next
+  const normalized = normalizeQueue(queue)
+  if (!normalized || normalized.items.length < 1) return -1
+  const currentIndex = normalized.currentIndex
+  if (normalized.playMode === "single" && direction === "auto") return currentIndex
+  if (normalized.playMode === "shuffle" && direction !== "prev") {
+    if (normalized.items.length === 1) return currentIndex
+    let next = currentIndex
+    for (let i = 0; i < 8 && next === currentIndex; i++) next = Math.floor(Math.random() * normalized.items.length)
+    return next === currentIndex ? (currentIndex + 1) % normalized.items.length : next
   }
-  if (direction === "prev") return queue.currentIndex > 0 ? queue.currentIndex - 1 : 0
-  const next = queue.currentIndex + 1
-  if (next >= queue.items.length) return direction === "auto" ? -1 : queue.currentIndex
+  if (direction === "prev") return currentIndex > 0 ? currentIndex - 1 : 0
+  const next = currentIndex + 1
+  if (next >= normalized.items.length) return direction === "auto" ? -1 : currentIndex
   return next
+}
+
+export function normalizeQueue(queue: RoomQueue | undefined): RoomQueue | undefined {
+  if (!queue) return undefined
+  const items = Array.isArray(queue.items) ? queue.items : []
+  const playMode = isPlayMode(queue.playMode) ? queue.playMode : "sequence"
+  if (!items.length) {
+    return {
+      items: [],
+      currentIndex: 0,
+      playMode
+    }
+  }
+
+  const currentItemIndex = queue.currentItemId
+    ? items.findIndex(item => item.id === queue.currentItemId)
+    : -1
+  const currentIndex = currentItemIndex >= 0
+    ? currentItemIndex
+    : clampQueueIndex(queue.currentIndex, items.length)
+
+  return {
+    ...queue,
+    items,
+    currentIndex,
+    currentItemId: items[currentIndex]?.id,
+    playMode
+  }
+}
+
+export function reconcileQueueCurrent(previous: RoomQueue | undefined, next: RoomQueue): RoomQueue {
+  const previousQueue = normalizeQueue(previous)
+  const nextQueue = normalizeQueue(next)
+  if (!nextQueue) return { items: [], currentIndex: 0, playMode: "sequence" }
+
+  const stableId = previousQueue?.currentItemId || previousQueue?.items[previousQueue.currentIndex]?.id
+  if (!stableId) return nextQueue
+  return normalizeQueue({ ...nextQueue, currentItemId: stableId }) || nextQueue
 }
 
 export function sanitizeQueueItems(items: QueueItem[] | undefined): QueueItem[] {
@@ -57,6 +97,7 @@ export function buildQueueRoomStatus(
   queue: RoomQueue,
   operator: string
 ): RoomStatus {
+  const normalizedQueue = normalizeQueue(queue) || queue
   return {
     roomId,
     content: room.content,
@@ -65,12 +106,20 @@ export function buildQueueRoomStatus(
     contentStamp: room.contentStamp,
     operateStamp: room.operateStamp,
     operator,
-    queue,
-    currentIndex: queue.currentIndex,
-    playMode: queue.playMode
+    queue: normalizedQueue,
+    currentIndex: normalizedQueue.currentIndex,
+    currentItemId: normalizedQueue.currentItemId,
+    playMode: normalizedQueue.playMode
   }
 }
 
 export function isPlayMode(value: string): value is PlayMode {
   return ["sequence", "shuffle", "single"].includes(value)
+}
+
+function clampQueueIndex(index: number, length: number): number {
+  if (!Number.isInteger(index)) return 0
+  if (index < 0) return 0
+  if (index >= length) return length - 1
+  return index
 }

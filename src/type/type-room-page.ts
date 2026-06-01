@@ -60,6 +60,7 @@ export interface RoomStatus {
   content?: ContentData
   queue?: RoomQueue
   currentIndex?: number
+  currentItemId?: string
   playMode?: PlayMode
 }
 

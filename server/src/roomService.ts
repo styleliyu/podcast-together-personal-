@@ -13,6 +13,7 @@ import { roomRepo, visitorRepo } from "./db"
 import { startPlaylistImport, stopPlaylistImportForRoom } from "./playlistImport"
 import { env } from "./config/env"
 import { broadcaster } from "./websocket/broadcaster"
+import { normalizeQueue } from "./queueService"
 
 const MAX_ROOM_NUM = 15
 const defaultRoomCfg: RoomConfig = {
@@ -218,7 +219,7 @@ async function handleCreate(
     owner: clientId,
     participants: [],
     config: defaultRoomCfg,
-    queue: body.roomData.queue,
+    queue: normalizeQueue(body.roomData.queue),
     isPersistent: Boolean(body.isPersistent),
     roomName: sanitizeRoomName(body.roomName)
   }
@@ -245,6 +246,7 @@ async function handleCreate(
       everyoneCanOperatePlayer: defaultRoomCfg.everyoneCanOperatePlayer,
       queue: room.queue,
       currentIndex: room.queue?.currentIndex,
+      currentItemId: room.queue?.currentItemId,
       playMode: room.queue?.playMode,
       isPersistent: room.isPersistent,
       roomName: room.roomName
@@ -286,6 +288,7 @@ export function pausePlayer(room: Room, operator = ""): Room {
 
 export function toRoRes(room: Room, guestId?: string, iamOwner?: "Y" | "N"): RoRes {
   const config = room.config || defaultRoomCfg
+  const queue = normalizeQueue(room.queue)
   const participants: ParticipantClient[] = (room.participants || []).map(v => ({
     nickName: v.nickName,
     guestId: v.guestId,
@@ -306,9 +309,10 @@ export function toRoRes(room: Room, guestId?: string, iamOwner?: "Y" | "N"): RoR
     guestId,
     iamOwner,
     everyoneCanOperatePlayer: config.everyoneCanOperatePlayer,
-    queue: room.queue,
-    currentIndex: room.queue?.currentIndex,
-    playMode: room.queue?.playMode,
+    queue,
+    currentIndex: queue?.currentIndex,
+    currentItemId: queue?.currentItemId,
+    playMode: queue?.playMode,
     isPersistent: room.isPersistent
   }
 }

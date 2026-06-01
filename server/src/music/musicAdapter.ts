@@ -118,7 +118,7 @@ async function parsePlaylist(resource: MusicResource): Promise<RequestRes<Conten
     const content = await resolveQueueItemContent(first)
     if (!content?.audioUrl) return { code: "E4004", showMsg: "歌单中没有可播放的歌曲，请更换歌单或平台。" }
 
-    const queue: RoomQueue = { items: playable, currentIndex: 0, playMode: "sequence" }
+    const queue: RoomQueue = { items: playable, currentIndex: 0, currentItemId: playable[0]?.id, playMode: "sequence" }
     return {
       code: "0000",
       data: {

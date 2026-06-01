@@ -4,7 +4,7 @@ import { roomRepo } from "./db"
 import { resolveQueueItemContent } from "./music/musicAdapter"
 import { getPlaylistImportProgress, importPlaylistByLink, setPlaylistImportBroadcaster } from "./playlistImport"
 import { buildPlaybackUpdate, canOperatePlayer, shouldIgnoreRapidSameOperator } from "./playbackService"
-import { buildQueueRoomStatus, canOperateQueue, contentToQueueItem, getNextQueueIndex, isPlayMode, sanitizeQueueItems } from "./queueService"
+import { buildQueueRoomStatus, canOperateQueue, contentToQueueItem, getNextQueueIndex, isPlayMode, normalizeQueue, reconcileQueueCurrent, sanitizeQueueItems } from "./queueService"
 import { broadcaster } from "./websocket/broadcaster"
 import type {
   ContentData,
@@ -118,6 +118,7 @@ async function handleFirstSend(socket: PtWebSocket, req: ReqBase): Promise<void>
   }
 
   const roomCfg = room.config || defaultRoomCfg
+  const queue = normalizeQueue(room.queue)
   socket.roomId = req.roomId
   broadcaster.send(socket, {
     responseType: "NEW_STATUS",
@@ -131,9 +132,10 @@ async function handleFirstSend(socket: PtWebSocket, req: ReqBase): Promise<void>
       contentStamp: room.contentStamp,
       operateStamp: room.operateStamp,
       everyoneCanOperatePlayer: roomCfg.everyoneCanOperatePlayer,
-      queue: room.queue,
-      currentIndex: room.queue?.currentIndex,
-      playMode: room.queue?.playMode
+      queue,
+      currentIndex: queue?.currentIndex,
+      currentItemId: queue?.currentItemId,
+      playMode: queue?.playMode
     }
   })
   const progress = getPlaylistImportProgress(req.roomId)
@@ -169,31 +171,34 @@ async function handleSetPlayer(socket: PtWebSocket, req: ReqOperatePlayer): Prom
 
 async function handleSetQueueIndex(socket: PtWebSocket, req: ReqSetQueueIndex): Promise<void> {
   const room = roomRepo.get(req.roomId)
-  if (!room?.queue || !canOperateQueue(room, req["x-pt-local-id"], defaultRoomCfg)) return
-  await switchQueueIndex(req.roomId, room, req.index, req["x-pt-stamp"], req["x-pt-local-id"], "PLAYING")
+  const queue = normalizeQueue(room?.queue)
+  if (!room || !queue || !canOperateQueue(room, req["x-pt-local-id"], defaultRoomCfg)) return
+  await switchQueueIndex(req.roomId, { ...room, queue }, req.index, req["x-pt-stamp"], req["x-pt-local-id"], "PLAYING")
 }
 
 async function handleAdvanceQueue(socket: PtWebSocket, req: ReqAdvanceQueue): Promise<void> {
   const room = roomRepo.get(req.roomId)
-  if (!room?.queue || !canOperateQueue(room, req["x-pt-local-id"], defaultRoomCfg)) return
-  if (req.fromIndex !== room.queue.currentIndex) return
+  const queue = normalizeQueue(room?.queue)
+  if (!room || !queue || !canOperateQueue(room, req["x-pt-local-id"], defaultRoomCfg)) return
+  if (req.fromIndex !== queue.currentIndex) return
 
-  const nextIndex = getNextQueueIndex(room.queue, req.direction)
+  const nextIndex = getNextQueueIndex(queue, req.direction)
   if (nextIndex < 0) {
-    await pauseQueueAtEnd(req.roomId, room, req)
+    await pauseQueueAtEnd(req.roomId, { ...room, queue }, req)
     return
   }
 
-  await switchQueueIndex(req.roomId, room, nextIndex, req["x-pt-stamp"], req["x-pt-local-id"], "PLAYING")
+  await switchQueueIndex(req.roomId, { ...room, queue }, nextIndex, req["x-pt-stamp"], req["x-pt-local-id"], "PLAYING")
 }
 
 async function handleSetPlayMode(socket: PtWebSocket, req: ReqSetPlayMode): Promise<void> {
   const room = roomRepo.get(req.roomId)
-  if (!room?.queue || !canOperateQueue(room, req["x-pt-local-id"], defaultRoomCfg)) return
+  const baseQueue = normalizeQueue(room?.queue)
+  if (!room || !baseQueue || !canOperateQueue(room, req["x-pt-local-id"], defaultRoomCfg)) return
   const guestId = getOperatorGuestId(req["x-pt-local-id"], room)
   if (!guestId || !isPlayMode(req.playMode)) return
 
-  const queue: RoomQueue = { ...room.queue, playMode: req.playMode }
+  const queue = normalizeQueue({ ...baseQueue, playMode: req.playMode }) as RoomQueue
   roomRepo.update(req.roomId, { queue, operator: guestId })
   broadcaster.broadcastRoomStatus(req.roomId, buildQueueRoomStatus(req.roomId, room, queue, guestId))
 }
@@ -207,9 +212,9 @@ async function handleAppendQueue(socket: PtWebSocket, req: ReqAppendQueue): Prom
   const incoming = sanitizeQueueItems(req.items)
   if (!incoming.length) return
 
-  const queue: RoomQueue = room.queue
-    ? { ...room.queue, items: [...room.queue.items, ...incoming] }
-    : { items: [contentToQueueItem(room.content), ...incoming], currentIndex: 0, playMode: "sequence" }
+  const baseQueue: RoomQueue = normalizeQueue(room.queue)
+    || { items: [contentToQueueItem(room.content)], currentIndex: 0, playMode: "sequence" }
+  const queue = reconcileQueueCurrent(baseQueue, { ...baseQueue, items: [...baseQueue.items, ...incoming] })
 
   roomRepo.update(req.roomId, { queue, operator: guestId })
   broadcaster.broadcastRoomStatus(req.roomId, buildQueueRoomStatus(req.roomId, room, queue, guestId))
@@ -235,7 +240,8 @@ async function pauseQueueAtEnd(roomId: string, room: Room, req: ReqAdvanceQueue)
     playStatus: "PAUSED",
     contentStamp: 0,
     operateStamp: req["x-pt-stamp"],
-    operator: guestId
+    operator: guestId,
+    queue: room.queue
   })
   broadcaster.broadcastRoomStatus(roomId, {
     roomId,
@@ -246,6 +252,7 @@ async function pauseQueueAtEnd(roomId: string, room: Room, req: ReqAdvanceQueue)
     operator: guestId,
     queue: room.queue,
     currentIndex: room.queue?.currentIndex,
+    currentItemId: room.queue?.currentItemId,
     playMode: room.queue?.playMode
   })
 }
@@ -258,11 +265,12 @@ async function switchQueueIndex(
   clientId: string,
   nextPlayStatus: "PLAYING" | "PAUSED"
 ): Promise<void> {
-  if (!room.queue || index < 0 || index >= room.queue.items.length) return
+  const baseQueue = normalizeQueue(room.queue)
+  if (!baseQueue || index < 0 || index >= baseQueue.items.length) return
   const guestId = getOperatorGuestId(clientId, room)
   if (!guestId) return
 
-  const targetItem = room.queue.items[index]
+  const targetItem = baseQueue.items[index]
   if (!targetItem.audioUrl && !canLazyResolveQueueItem(roomId, targetItem)) return
   const content = await resolveQueueItemContent(targetItem)
   if (!content?.audioUrl) {
@@ -270,9 +278,10 @@ async function switchQueueIndex(
     return
   }
   const queue: RoomQueue = {
-    ...room.queue,
+    ...baseQueue,
     currentIndex: index,
-    items: room.queue.items.map((item, idx) => idx === index ? { ...item, audioUrl: content.audioUrl } : item)
+    currentItemId: targetItem.id,
+    items: baseQueue.items.map((item, idx) => idx === index ? { ...item, audioUrl: content.audioUrl } : item)
   }
   const cleanContent: ContentData = { ...content }
   delete cleanContent.queue
@@ -296,6 +305,7 @@ async function switchQueueIndex(
     operator: guestId,
     queue,
     currentIndex: queue.currentIndex,
+    currentItemId: queue.currentItemId,
     playMode: queue.playMode
   })
 }
